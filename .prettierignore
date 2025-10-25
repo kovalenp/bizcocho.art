@@ -1,0 +1,27 @@
+# Build outputs
+**/dist/
+**/.astro/
+**/.next/
+**/out/
+**/build/
+
+# Dependencies
+**/node_modules/
+
+# Generated files
+**/payload-types.ts
+
+# Cache
+**/.turbo/
+**/.cache/
+
+# Logs
+*.log
+
+# Environment files
+.env*
+
+# Package manager files
+pnpm-lock.yaml
+package-lock.json
+yarn.lock

@@ -1,0 +1,15 @@
+# Build outputs
+dist/
+.astro/
+
+# Dependencies
+node_modules/
+
+# Cache
+.cache/
+
+# Logs
+*.log
+
+# Environment files
+.env*

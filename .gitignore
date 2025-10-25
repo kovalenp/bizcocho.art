@@ -1,0 +1,94 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+.pnpm-home/
+
+# Environment files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env.*.local
+
+# Build outputs - Astro
+apps/web/dist/
+apps/web/.astro/
+
+# Build outputs - Next.js/Payload CMS
+apps/cms/.next/
+apps/cms/out/
+apps/cms/build/
+
+# Turborepo cache
+.turbo/
+
+# Payload CMS generated files
+apps/cms/src/payload-types.ts
+
+# Database & Docker volumes
+postgres-data/
+db_data/
+
+# Testing
+coverage/
+.nyc_output/
+test-results/
+playwright-report/
+apps/cms/tests/results/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Runtime data
+pids/
+*.pid
+*.seed
+*.pid.lock
+
+# Cache directories
+.cache/
+.eslintcache
+.stylelintcache
+
+# Optional npm cache directory
+.npm
+
+# IDE and editors
+.vscode/settings.json
+.vscode/launch.json
+.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp
+.temp/
+.tmp/
+
+# Miscellaneous
+*.tsbuildinfo
+.output/
+.vercel/
+.netlify/
+
+# Local development
+.local/
