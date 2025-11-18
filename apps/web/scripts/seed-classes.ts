@@ -163,9 +163,67 @@ async function seed() {
     }
 
     // ======================
-    // 3. CREATE INSTRUCTORS
+    // 3. CREATE TAGS
     // ======================
-    console.log('\n📋 Step 3: Creating instructors...')
+    console.log('\n📋 Step 3: Creating tags...')
+
+    const tagsData = [
+      {
+        name: { en: 'Kids & Family', es: 'Niños y Familia' },
+        slug: 'kids-family',
+        color: '#FF6B9D',
+      },
+      {
+        name: { en: 'Wine', es: 'Vino' },
+        slug: 'wine',
+        color: '#9C27B0',
+      },
+      {
+        name: { en: 'Ceramics - Painting', es: 'Cerámica - Pintura' },
+        slug: 'ceramics-painting',
+        color: '#8D6E63',
+      },
+      {
+        name: { en: 'Ceramics - Hand Building', es: 'Cerámica - Construcción Manual' },
+        slug: 'ceramics-hand-building',
+        color: '#795548',
+      },
+      {
+        name: { en: 'Painting', es: 'Pintura' },
+        slug: 'painting',
+        color: '#FF9800',
+      },
+    ]
+
+    const createdTags = []
+    for (const tagData of tagsData) {
+      const tag = await payload.create({
+        collection: 'tags',
+        data: {
+          name: tagData.name.en,
+          slug: tagData.slug,
+          color: tagData.color,
+        },
+        locale: 'en',
+      })
+
+      await payload.update({
+        collection: 'tags',
+        id: tag.id,
+        data: {
+          name: tagData.name.es,
+        },
+        locale: 'es',
+      })
+
+      createdTags.push(tag)
+      console.log(`✅ Created tag: ${tagData.name.en}`)
+    }
+
+    // ======================
+    // 4. CREATE INSTRUCTORS
+    // ======================
+    console.log('\n📋 Step 4: Creating instructors...')
 
     const instructors = [
       {
@@ -265,6 +323,7 @@ async function seed() {
         durationMinutes: 180,
         maxCapacity: 8,
         location: { en: 'Studio A', es: 'Estudio A' },
+        tags: [createdTags[4].id], // Painting
         isPublished: true,
       },
       {
@@ -282,6 +341,7 @@ async function seed() {
         durationMinutes: 180,
         maxCapacity: 6,
         location: { en: 'Studio B', es: 'Estudio B' },
+        tags: [createdTags[4].id], // Painting
         isPublished: true,
       },
     ]
@@ -302,6 +362,7 @@ async function seed() {
           durationMinutes: classData.durationMinutes,
           maxCapacity: classData.maxCapacity,
           location: classData.location.en,
+          tags: classData.tags,
           isPublished: classData.isPublished,
         },
         locale: 'en',
@@ -360,6 +421,7 @@ async function seed() {
         durationMinutes: 120,
         maxCapacity: 12,
         location: 'Wine Bar Studio',
+        tags: [createdTags[1].id, createdTags[4].id], // Wine + Painting
         isPublished: true,
       },
       locale: 'en',
@@ -446,6 +508,7 @@ async function seed() {
         durationMinutes: 120,
         maxCapacity: 10,
         location: 'Ceramics Studio',
+        tags: [createdTags[3].id], // Ceramics - Hand Building
         isPublished: true,
       },
       locale: 'en',
@@ -478,6 +541,7 @@ async function seed() {
         currency: 'eur',
         billingCycle: 'monthly',
         maxEnrollments: 10,
+        tags: [createdTags[3].id], // Ceramics - Hand Building
         isPublished: true,
       },
       locale: 'en',

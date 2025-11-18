@@ -9,6 +9,7 @@ import sharp from 'sharp'
 
 import { Users } from './collections/Users'
 import { Media } from './collections/Media'
+import { Tags } from './collections/Tags'
 import { ClassTemplates } from './collections/ClassTemplates'
 import { Instructors } from './collections/Instructors'
 import { ClassSessions } from './collections/ClassSessions'
@@ -30,6 +31,7 @@ export default buildConfig({
   collections: [
     Users,
     Media,
+    Tags,
     ClassTemplates,
     Instructors,
     ClassSessions,

@@ -92,6 +92,15 @@ export const Memberships: CollectionConfig = {
       },
     },
     {
+      name: 'tags',
+      type: 'relationship',
+      relationTo: 'tags',
+      hasMany: true,
+      admin: {
+        description: 'Tags for filtering (e.g., Kids & Family, Wine, Ceramics)',
+      },
+    },
+    {
       name: 'isPublished',
       type: 'checkbox',
       defaultValue: false,

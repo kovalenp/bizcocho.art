@@ -19,5 +19,12 @@
   },
   "engines": {
     "node": ">=22.0.0 <25"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "sharp",
+      "esbuild",
+      "unrs-resolver"
+    ]
   }
 }
