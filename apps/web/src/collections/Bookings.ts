@@ -3,30 +3,71 @@ import type { CollectionConfig } from 'payload'
 export const Bookings: CollectionConfig = {
   slug: 'bookings',
   admin: {
-    useAsTitle: 'id',
-    defaultColumns: ['user', 'classSession', 'quantity', 'status', 'paymentStatus'],
+    useAsTitle: 'email',
+    defaultColumns: ['email', 'classTemplate', 'numberOfPeople', 'status', 'paymentStatus'],
   },
   fields: [
     {
       name: 'user',
       type: 'relationship',
       relationTo: 'users',
+      required: false,
+      admin: {
+        description: 'User who made the booking (optional for guest bookings)',
+      },
+    },
+    {
+      name: 'firstName',
+      type: 'text',
       required: true,
       admin: {
-        description: 'User who made the booking',
+        description: 'First name of the person booking',
+      },
+    },
+    {
+      name: 'lastName',
+      type: 'text',
+      required: true,
+      admin: {
+        description: 'Last name of the person booking',
+      },
+    },
+    {
+      name: 'email',
+      type: 'email',
+      required: true,
+      admin: {
+        description: 'Email address for booking confirmation',
+      },
+    },
+    {
+      name: 'phone',
+      type: 'text',
+      required: true,
+      admin: {
+        description: 'Phone number for contact',
+      },
+    },
+    {
+      name: 'classTemplate',
+      type: 'relationship',
+      relationTo: 'class-templates',
+      required: true,
+      admin: {
+        description: 'The class template being booked',
       },
     },
     {
       name: 'classSession',
       type: 'relationship',
       relationTo: 'class-sessions',
-      required: true,
+      required: false,
       admin: {
-        description: 'The specific class session being booked',
+        description: 'The specific class session being booked (optional)',
       },
     },
     {
-      name: 'quantity',
+      name: 'numberOfPeople',
       type: 'number',
       required: true,
       defaultValue: 1,

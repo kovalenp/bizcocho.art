@@ -1,6 +1,7 @@
 import { getPayload } from 'payload'
 import config from '@payload-config'
 import type { Locale } from '@/i18n/config'
+import { getMessages } from '@/i18n/messages'
 import { LanguageSelector } from '@/components/LanguageSelector'
 import { ClassFilter } from '@/components/ClassFilter'
 
@@ -13,6 +14,7 @@ type Props = {
 export default async function HomePage({ params }: Props) {
   const { locale } = await params
   const payload = await getPayload({ config })
+  const messages = getMessages(locale)
 
   const [classTemplates, tags] = await Promise.all([
     payload.find({
@@ -41,34 +43,30 @@ export default async function HomePage({ params }: Props) {
 
       <header className="text-center mb-12">
         <h1 className="text-4xl md:text-5xl font-bold mb-4">
-          bozchocho.art
+          {messages.home.title}
         </h1>
         <p className="text-xl text-gray-600">
-          {locale === 'es'
-            ? 'Descubre tu creatividad a través de clases de arte'
-            : 'Discover your creativity through art classes'}
+          {messages.home.subtitle}
         </p>
         <p className="mt-4">
-          <a href="/admin">Open CMS (Payload)</a>
+          <a href="/admin">{messages.common.openCms}</a>
         </p>
       </header>
 
       <section>
         <h2 className="text-3xl font-semibold mb-8 text-center">
-          {locale === 'es' ? 'Clases Disponibles' : 'Available Classes'}
+          {messages.home.availableClasses}
         </h2>
 
         {classTemplates.docs.length > 0 ? (
-          <ClassFilter classes={classTemplates.docs} tags={tags.docs} locale={locale} />
+          <ClassFilter classes={classTemplates.docs} tags={tags.docs} messages={messages} locale={locale} />
         ) : (
           <div className="text-center p-12 bg-gray-50 rounded-lg">
             <h3 className="text-gray-600 text-lg font-medium">
-              {locale === 'es' ? 'No hay clases disponibles' : 'No classes available'}
+              {messages.home.noClasses}
             </h3>
             <p className="text-gray-500 mt-2">
-              {locale === 'es'
-                ? '¡Vuelve pronto para nuevas clases de arte!'
-                : 'Check back soon for new art classes!'}
+              {messages.home.noClassesMessage}
             </p>
           </div>
         )}

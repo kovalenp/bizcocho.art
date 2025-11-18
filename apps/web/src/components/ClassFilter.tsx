@@ -1,17 +1,20 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 import type { ClassTemplate, Tag, Media } from '@/payload-types'
+import type { Messages } from '@/i18n/messages'
 import type { Locale } from '@/i18n/config'
 
 type ClassFilterProps = {
   classes: ClassTemplate[]
   tags: Tag[]
+  messages: Messages
   locale: Locale
 }
 
-export function ClassFilter({ classes, tags, locale }: ClassFilterProps) {
-  const [selectedTag, setSelectedTag] = useState<string | null>(null)
+export function ClassFilter({ classes, tags, messages, locale }: ClassFilterProps) {
+  const [selectedTag, setSelectedTag] = useState<string | number | null>(null)
 
   const filteredClasses = selectedTag
     ? classes.filter((cls) => {
@@ -36,7 +39,7 @@ export function ClassFilter({ classes, tags, locale }: ClassFilterProps) {
               : 'border border-gray-300 bg-white text-gray-800 hover:border-gray-400'
           }`}
         >
-          {locale === 'es' ? 'Todos' : 'All'}
+          {messages.common.all}
         </button>
         {tags.map((tag) => (
           <button
@@ -57,18 +60,16 @@ export function ClassFilter({ classes, tags, locale }: ClassFilterProps) {
       {filteredClasses.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
           {filteredClasses.map((classItem) => (
-            <ClassCard key={classItem.id} data={classItem} locale={locale} />
+            <ClassCard key={classItem.id} data={classItem} messages={messages} locale={locale} />
           ))}
         </div>
       ) : (
         <div className="text-center p-12 bg-gray-50 rounded-lg">
           <h3 className="text-gray-600 text-lg font-medium">
-            {locale === 'es' ? 'No hay clases para este filtro' : 'No classes for this filter'}
+            {messages.home.noClassesForFilter}
           </h3>
           <p className="text-gray-500 mt-2">
-            {locale === 'es'
-              ? 'Prueba con otro filtro'
-              : 'Try a different filter'}
+            {messages.home.tryDifferentFilter}
           </p>
         </div>
       )}
@@ -76,18 +77,23 @@ export function ClassFilter({ classes, tags, locale }: ClassFilterProps) {
   )
 }
 
-function ClassCard({ data, locale }: { data: ClassTemplate; locale: Locale }) {
+function ClassCard({ data, messages, locale }: { data: ClassTemplate; messages: Messages; locale: Locale }) {
   const featuredImage = data.featuredImage as Media | null
   const classTags = (data.tags as Tag[]) || []
 
   return (
-    <div className="border border-gray-300 rounded-lg overflow-hidden shadow-sm hover:shadow-md transition-shadow duration-200">
+    <Link
+      href={`/${locale}/classes/${data.slug}`}
+      className="group block no-underline border border-gray-200 rounded-lg overflow-hidden shadow-sm hover:shadow-xl hover:scale-[1.02] hover:border-primary hover:bg-gray-50 transition-all duration-300 ease-in-out"
+    >
       {featuredImage?.url && (
-        <img
-          src={featuredImage.url}
-          alt={data.title}
-          className="w-full h-48 object-cover"
-        />
+        <div className="overflow-hidden h-48">
+          <img
+            src={featuredImage.url}
+            alt={data.title}
+            className="w-full h-full object-cover transition-transform duration-300 ease-in-out group-hover:scale-110"
+          />
+        </div>
       )}
       <div className="p-6">
         <h3 className="mb-4 text-xl font-medium text-gray-800">
@@ -122,16 +128,16 @@ function ClassCard({ data, locale }: { data: ClassTemplate; locale: Locale }) {
             €{((data.priceCents || 0) / 100).toFixed(2)}
           </span>
           <span className="bg-gray-100 px-2 py-1 rounded text-sm">
-            {data.maxCapacity || 0} {locale === 'es' ? 'plazas' : 'spots'}
+            {data.maxCapacity || 0} {messages.home.spots}
           </span>
         </div>
         <div className="flex gap-2 flex-wrap text-sm text-gray-500">
           <span>
-            ⏱️ {data.durationMinutes || 0} {locale === 'es' ? 'min' : 'min'}
+            ⏱️ {data.durationMinutes || 0} {messages.home.min}
           </span>
           {data.location && <span>📍 {data.location}</span>}
         </div>
       </div>
-    </div>
+    </Link>
   )
 }

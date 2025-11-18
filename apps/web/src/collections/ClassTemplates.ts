@@ -111,6 +111,15 @@ export const ClassTemplates: CollectionConfig = {
       },
     },
     {
+      name: 'availableSpots',
+      type: 'number',
+      required: false,
+      min: 0,
+      admin: {
+        description: 'Current available spots (auto-calculated based on bookings). Leave empty to use maxCapacity.',
+      },
+    },
+    {
       name: 'location',
       type: 'text',
       localized: true,
