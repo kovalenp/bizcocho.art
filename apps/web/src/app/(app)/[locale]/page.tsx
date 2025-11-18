@@ -1,6 +1,6 @@
 import { getPayload } from 'payload'
 import config from '@payload-config'
-import type { Class, Media } from '@/payload-types'
+import type { ClassTemplate, Media } from '@/payload-types'
 import type { Locale } from '@/i18n/config'
 import { LanguageSelector } from '@/components/LanguageSelector'
 
@@ -14,14 +14,13 @@ export default async function HomePage({ params }: Props) {
   const { locale } = await params
   const payload = await getPayload({ config })
 
-  const classes = await payload.find({
-    collection: 'classes',
+  const classTemplates = await payload.find({
+    collection: 'class-templates',
     where: {
       isPublished: {
         equals: true,
       },
     },
-    sort: 'start',
     depth: 2,
     limit: 10,
     locale,
@@ -58,7 +57,7 @@ export default async function HomePage({ params }: Props) {
           {locale === 'es' ? 'Clases Disponibles' : 'Available Classes'}
         </h2>
 
-        {classes.docs.length > 0 ? (
+        {classTemplates.docs.length > 0 ? (
           <div
             style={{
               display: 'grid',
@@ -66,7 +65,7 @@ export default async function HomePage({ params }: Props) {
               gap: '2rem',
             }}
           >
-            {classes.docs.map((classItem) => (
+            {classTemplates.docs.map((classItem) => (
               <ClassCard key={classItem.id} data={classItem} locale={locale} />
             ))}
           </div>
@@ -94,7 +93,7 @@ export default async function HomePage({ params }: Props) {
   )
 }
 
-function ClassCard({ data, locale }: { data: Class; locale: Locale }) {
+function ClassCard({ data, locale }: { data: ClassTemplate; locale: Locale }) {
   const featuredImage = data.featuredImage as Media | null
 
   return (
@@ -146,22 +145,13 @@ function ClassCard({ data, locale }: { data: Class; locale: Locale }) {
               fontSize: '0.9rem',
             }}
           >
-            {data.capacity || 0} {locale === 'es' ? 'plazas' : 'spots'}
+            {data.maxCapacity || 0} {locale === 'es' ? 'plazas' : 'spots'}
           </span>
         </div>
-        {data.start && (
-          <p style={{ margin: 0, fontSize: '0.9rem', color: '#888' }}>
-            📅{' '}
-            {new Date(data.start).toLocaleDateString(locale === 'es' ? 'es-ES' : 'en-GB', {
-              weekday: 'long',
-              year: 'numeric',
-              month: 'long',
-              day: 'numeric',
-              hour: '2-digit',
-              minute: '2-digit',
-            })}
-          </p>
-        )}
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', fontSize: '0.85rem', color: '#888' }}>
+          <span>⏱️ {data.durationMinutes || 0} {locale === 'es' ? 'min' : 'min'}</span>
+          {data.location && <span>📍 {data.location}</span>}
+        </div>
       </div>
     </div>
   )
