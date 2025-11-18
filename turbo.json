@@ -1,10 +1,13 @@
 {
   "$schema": "https://turbo.build/schema.json",
   "globalEnv": [
-    "DATABASE_URL",
+    "DATABASE_URI",
     "PAYLOAD_SECRET",
     "STRIPE_SECRET_KEY",
-    "SITE_URL"
+    "STRIPE_WEBHOOK_SECRET",
+    "SITE_URL",
+    "SMTP_HOST",
+    "SMTP_PORT"
   ],
   "tasks": {
     "build": {

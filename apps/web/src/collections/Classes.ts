@@ -9,17 +9,39 @@ export const Classes: CollectionConfig = {
     {
       name: 'title',
       type: 'text',
-      required: true
+      required: true,
+      localized: true,
     },
     {
       name: 'slug',
       type: 'text',
       required: true,
-      unique: true
+      unique: true,
+      localized: true,
     },
     {
       name: 'description',
-      type: 'textarea'
+      type: 'textarea',
+      localized: true,
+    },
+    {
+      name: 'featuredImage',
+      type: 'relationship',
+      relationTo: 'media',
+      required: false,
+      admin: {
+        description: 'Main image for the class'
+      }
+    },
+    {
+      name: 'gallery',
+      type: 'relationship',
+      relationTo: 'media',
+      hasMany: true,
+      required: false,
+      admin: {
+        description: 'Additional images for class detail carousel'
+      }
     },
     {
       name: 'priceCents',

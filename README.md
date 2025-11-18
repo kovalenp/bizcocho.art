@@ -1,11 +1,11 @@
-# bozchocho.art — Astro + Payload + Stripe (monorepo)
+# bozchocho.art — Next.js + Payload CMS + Stripe (monorepo)
 
 **Stack**
 
-- Astro 5 (SSR via `@astrojs/node`)
-- Payload CMS 3 (Next.js 15 app)
-- PostgreSQL (local), Stripe SDK v18
-- Turborepo + npm workspaces
+- Next.js 15 with Payload CMS 3 embedded
+- PostgreSQL (local)
+- Stripe SDK (planned)
+- Turborepo + pnpm workspaces
 - Node.js 22 LTS
 
 ## Quick start
@@ -14,22 +14,24 @@
 nvm use 22 || volta install node@22
 pnpm i
 cp apps/web/.env.example apps/web/.env
-cp apps/cms/.env.example apps/cms/.env
-pnpm dev   # runs web and cms together
+pnpm dev
 ```
 
-### Apps
+### App
 
-- `apps/web` — Astro site on http://localhost:4321
-- `apps/cms` — Payload admin/API on http://localhost:3000 (Next.js)
+- `apps/web` — Unified Next.js app on http://localhost:4321
+  - Public site at `/`
+  - Payload CMS admin at `/admin`
+  - Auto-generated API at `/api/[...slug]`
+  - GraphQL at `/api/graphql`
 
 ### Local DB
 
-Use any local Postgres (e.g., Postgres.app, Docker, or Supabase). Put your connection string in `apps/cms/.env` as `DATABASE_URL`.
+Use any local Postgres (e.g., Postgres.app, Docker, or Supabase). Put your connection string in `apps/web/.env` as `DATABASE_URI`.
 
 ### Stripe
 
-Set `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` in `apps/cms/.env`. A minimal Checkout Session route is included.
+Set `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` in `apps/web/.env` (planned feature).
 
 ## Local Docker (DB + MailPit)
 
@@ -39,21 +41,32 @@ docker compose -f infra/docker/docker-compose.yml up -d
 # MailPit UI: http://localhost:8025 (SMTP on 1025)
 ```
 
-In `apps/cms/.env` set:
+In `apps/web/.env` set:
 
 ```
-DATABASE_URL=postgres://postgres:postgres@localhost:5432/bozchocho
+DATABASE_URI=postgres://postgres:postgres@localhost:5432/bozchocho
+PAYLOAD_SECRET=your-secret-here
 SMTP_HOST=localhost
 SMTP_PORT=1025
 ```
 
-Then run the apps on your host Node:
+Then run the app on your host Node:
 
 ```bash
 pnpm dev
-# web: http://localhost:4321
-# cms: http://localhost:3000
+# app: http://localhost:4321
+# admin: http://localhost:4321/admin
 ```
+
+## Seeding the database
+
+```bash
+pnpm --filter @bozchocho/web seed
+```
+
+This creates:
+- Admin user: `admin@bozchocho.art` / `admin123`
+- 4 sample art classes with images
 
 ## Using pnpm
 
@@ -63,6 +76,41 @@ corepack prepare pnpm@latest --activate
 
 pnpm i
 pnpm dev
-# web: http://localhost:4321
-# cms: http://localhost:3000
+# app: http://localhost:4321
+# admin: http://localhost:4321/admin
 ```
+
+## Architecture
+
+This is a unified Next.js 15 application with Payload CMS 3 embedded. Benefits:
+
+- **Single deployment** - One app instead of two
+- **Direct database access** - Use `getPayload()` in Server Components (no HTTP calls)
+- **Shared TypeScript types** - Payload auto-generates types for collections
+- **Simplified development** - One framework, one config, one build process
+
+### Route Groups
+
+- `(app)` - Public frontend routes
+- `(payload)` - CMS admin and API routes
+
+### Data Access Pattern
+
+```tsx
+// Server Component with direct Payload access
+import { getPayload } from 'payload'
+import config from '@payload-config'
+
+export default async function Page() {
+  const payload = await getPayload({ config })
+
+  const classes = await payload.find({
+    collection: 'classes',
+    where: { isPublished: { equals: true } },
+  })
+
+  return <div>{/* render classes */}</div>
+}
+```
+
+No API calls needed! Direct in-memory database access via Payload's ORM.

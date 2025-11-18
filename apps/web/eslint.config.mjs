@@ -10,16 +10,7 @@ const compat = new FlatCompat({
 })
 
 const eslintConfig = [
-  ...compat.extends('@eslint/js/recommended', '@typescript-eslint/recommended'),
-  ...compat.config({
-    parser: '@typescript-eslint/parser',
-    plugins: ['@typescript-eslint'],
-    extends: ['plugin:astro/recommended'],
-  }),
-  {
-    files: ['**/*.astro'],
-    processor: 'astro/astro',
-  },
+  ...compat.extends('next/core-web-vitals', 'next/typescript'),
   {
     rules: {
       '@typescript-eslint/ban-ts-comment': 'warn',
@@ -40,7 +31,7 @@ const eslintConfig = [
     },
   },
   {
-    ignores: ['dist/', '.astro/', 'node_modules/'],
+    ignores: ['.next/'],
   },
 ]
 

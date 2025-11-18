@@ -32,6 +32,20 @@ export default buildConfig({
       connectionString: process.env.DATABASE_URI || '',
     },
   }),
+  localization: {
+    locales: [
+      {
+        code: 'en',
+        label: 'English',
+      },
+      {
+        code: 'es',
+        label: 'Español',
+      },
+    ],
+    defaultLocale: 'en',
+    fallback: true,
+  },
   sharp,
   plugins: [
     payloadCloudPlugin(),
