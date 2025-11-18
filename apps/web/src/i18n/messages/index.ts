@@ -33,6 +33,9 @@ type MessageStructure = {
   }
   booking: {
     title: string
+    selectSession: string
+    noSessions: string
+    sessionFull: string
     firstName: string
     lastName: string
     email: string

@@ -4,7 +4,7 @@ export const Bookings: CollectionConfig = {
   slug: 'bookings',
   admin: {
     useAsTitle: 'email',
-    defaultColumns: ['email', 'classTemplate', 'numberOfPeople', 'status', 'paymentStatus'],
+    defaultColumns: ['email', 'classSession', 'numberOfPeople', 'status', 'paymentStatus'],
   },
   fields: [
     {
@@ -49,21 +49,12 @@ export const Bookings: CollectionConfig = {
       },
     },
     {
-      name: 'classTemplate',
-      type: 'relationship',
-      relationTo: 'class-templates',
-      required: true,
-      admin: {
-        description: 'The class template being booked',
-      },
-    },
-    {
       name: 'classSession',
       type: 'relationship',
       relationTo: 'class-sessions',
-      required: false,
+      required: true,
       admin: {
-        description: 'The specific class session being booked (optional)',
+        description: 'The specific class session being booked',
       },
     },
     {

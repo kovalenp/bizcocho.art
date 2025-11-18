@@ -8,6 +8,9 @@ const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 dotenv.config({ path: path.resolve(__dirname, '../.env') })
 
+// Always drop database before seeding to ensure clean state
+process.env.PAYLOAD_DROP_DATABASE = 'true'
+
 async function seed() {
   console.log('🌱 Starting comprehensive database seed...')
 
@@ -45,13 +48,13 @@ async function seed() {
       adminUser = await payload.create({
         collection: 'users',
         data: {
-          email: 'admin@bozcocho.art',
+          email: 'admin@bizcocho.art',
           password: 'admin123',
           firstName: 'Admin',
           lastName: 'User',
         },
       })
-      console.log('✅ Admin user created: admin@bozcocho.art / admin123')
+      console.log('✅ Admin user created: admin@bizcocho.art / admin123')
     } else {
       adminUser = existingUsers.docs[0]
       console.log('ℹ️  Admin user already exists')
@@ -108,6 +111,34 @@ async function seed() {
           es: 'Imagen de clase de collage',
         },
         title: 'Collage Class',
+      },
+      // Gallery images
+      {
+        filename: 'gallery-1.jpg',
+        url: 'https://picsum.photos/800/600',
+        alt: {
+          en: 'Art class gallery 1',
+          es: 'Galería de clase de arte 1',
+        },
+        title: 'Gallery Image 1',
+      },
+      {
+        filename: 'gallery-2.jpg',
+        url: 'https://picsum.photos/800/600',
+        alt: {
+          en: 'Art class gallery 2',
+          es: 'Galería de clase de arte 2',
+        },
+        title: 'Gallery Image 2',
+      },
+      {
+        filename: 'gallery-3.jpg',
+        url: 'https://picsum.photos/800/600',
+        alt: {
+          en: 'Art class gallery 3',
+          es: 'Galería de clase de arte 3',
+        },
+        title: 'Gallery Image 3',
       },
       {
         filename: 'instructor-maria.jpg',
@@ -233,13 +264,13 @@ async function seed() {
           en: 'Professional watercolor artist with 15 years of teaching experience. Specializes in landscapes and botanical art.',
           es: 'Artista profesional de acuarela con 15 años de experiencia docente. Se especializa en paisajes y arte botánico.',
         },
-        email: 'maria@bozchocho.art',
+        email: 'maria@bizcocho.art',
         phone: '+34 612 345 678',
         specialties: {
           en: 'Watercolor, Botanical Art, Landscapes',
           es: 'Acuarela, Arte Botánico, Paisajes',
         },
-        photo: createdMedia[4]?.id, // instructor-maria.jpg
+        photo: createdMedia[7]?.id, // María García photo
         isActive: true,
       },
       {
@@ -249,13 +280,13 @@ async function seed() {
           en: 'Contemporary artist and instructor focusing on abstract techniques and modern art. Exhibited internationally.',
           es: 'Artista e instructor contemporáneo enfocado en técnicas abstractas y arte moderno. Ha expuesto internacionalmente.',
         },
-        email: 'carlos@bozchocho.art',
+        email: 'carlos@bizcocho.art',
         phone: '+34 623 456 789',
         specialties: {
           en: 'Abstract Art, Acrylics, Mixed Media',
           es: 'Arte Abstracto, Acrílicos, Técnica Mixta',
         },
-        photo: createdMedia[5]?.id, // instructor-carlos.jpg
+        photo: createdMedia[8]?.id, // Carlos Rodríguez photo
         isActive: true,
       },
     ]
@@ -318,6 +349,7 @@ async function seed() {
         classType: 'one-time',
         instructor: createdInstructors[0].id,
         featuredImage: createdMedia[0]?.id,
+        gallery: [createdMedia[4]?.id, createdMedia[5]?.id, createdMedia[6]?.id].filter(Boolean),
         priceCents: 4500,
         currency: 'eur',
         durationMinutes: 180,
@@ -336,6 +368,7 @@ async function seed() {
         classType: 'one-time',
         instructor: createdInstructors[1].id,
         featuredImage: createdMedia[1]?.id,
+        gallery: [createdMedia[5]?.id, createdMedia[6]?.id].filter(Boolean),
         priceCents: 5500,
         currency: 'eur',
         durationMinutes: 180,
@@ -357,6 +390,7 @@ async function seed() {
           classType: classData.classType as 'one-time' | 'recurring' | 'membership-template',
           instructor: classData.instructor,
           featuredImage: classData.featuredImage,
+          gallery: classData.gallery || [],
           priceCents: classData.priceCents,
           currency: classData.currency,
           durationMinutes: classData.durationMinutes,
@@ -383,22 +417,33 @@ async function seed() {
       createdOneTimeClasses.push(cls)
       console.log(`✅ Created one-time class: ${classData.title.en}`)
 
-      // Create class instance for this one-time class
-      const instanceStart = new Date('2025-12-15T14:00:00Z')
-      const instanceEnd = new Date(instanceStart.getTime() + classData.durationMinutes * 60000)
+      // Create 1-4 random class sessions for this class
+      const numberOfSessions = Math.floor(Math.random() * 4) + 1 // Random number between 1-4
+      const baseDate = new Date()
+      baseDate.setDate(baseDate.getDate() + 7) // Start 1 week from now
 
-      const instance = await payload.create({
-        collection: 'class-sessions',
-        data: {
-          classTemplate: cls.id,
-          startDateTime: instanceStart.toISOString(),
-          endDateTime: instanceEnd.toISOString(),
-          timezone: 'Europe/Madrid',
-          status: 'scheduled',
-          availableSpots: classData.maxCapacity,
-        },
-      })
-      console.log(`  📅 Created instance for ${new Date(instanceStart).toLocaleString('es-ES')}`)
+      for (let i = 0; i < numberOfSessions; i++) {
+        // Create sessions on different days (spread over next few weeks)
+        const daysOffset = i * 7 + Math.floor(Math.random() * 3) // Weekly-ish, with some variation
+        const sessionDate = new Date(baseDate)
+        sessionDate.setDate(baseDate.getDate() + daysOffset)
+        sessionDate.setHours(14 + Math.floor(Math.random() * 4), 0, 0, 0) // Between 14:00-17:00
+
+        const instanceEnd = new Date(sessionDate.getTime() + classData.durationMinutes * 60000)
+
+        await payload.create({
+          collection: 'class-sessions',
+          data: {
+            classTemplate: cls.id,
+            startDateTime: sessionDate.toISOString(),
+            endDateTime: instanceEnd.toISOString(),
+            timezone: 'Europe/Madrid',
+            status: 'scheduled',
+            availableSpots: classData.maxCapacity,
+          },
+        })
+        console.log(`  📅 Created session ${i + 1}/${numberOfSessions} for ${sessionDate.toLocaleString('es-ES')}`)
+      }
     }
 
     // ======================
@@ -443,6 +488,11 @@ async function seed() {
     console.log(`✅ Created recurring class: Paint & Drink Wine`)
 
     // Add recurrence pattern as array field (every Thursday at 18:00)
+    const recurrenceStartDate = new Date()
+    recurrenceStartDate.setDate(recurrenceStartDate.getDate() + 14) // Start 2 weeks from now
+    const recurrenceEndDate = new Date(recurrenceStartDate)
+    recurrenceEndDate.setMonth(recurrenceEndDate.getMonth() + 3) // End 3 months later
+
     await payload.update({
       collection: 'class-templates',
       id: recurringClass.id,
@@ -452,8 +502,8 @@ async function seed() {
             frequency: 'weekly',
             daysOfWeek: ['4'], // Thursday
             startTime: '18:00',
-            startDate: new Date('2025-12-01').toISOString(),
-            endDate: new Date('2026-02-28').toISOString(),
+            startDate: recurrenceStartDate.toISOString(),
+            endDate: recurrenceEndDate.toISOString(),
             timezone: 'Europe/Madrid',
             isActive: true,
           },
@@ -463,10 +513,16 @@ async function seed() {
 
     console.log(`  🔁 Added recurrence pattern: Every Thursday at 18:00`)
 
-    // Generate instances for next 4 weeks
+    // Generate 1-4 random instances
+    const numberOfRecurringSessions = Math.floor(Math.random() * 4) + 1
     const thursdays = []
-    const patternStart = new Date('2025-12-04') // First Thursday in December
-    for (let i = 0; i < 8; i++) {
+    const patternStart = new Date()
+    patternStart.setDate(patternStart.getDate() + 14) // Start 2 weeks from now
+    // Find next Thursday
+    while (patternStart.getDay() !== 4) {
+      patternStart.setDate(patternStart.getDate() + 1)
+    }
+    for (let i = 0; i < numberOfRecurringSessions; i++) {
       const thursday = new Date(patternStart)
       thursday.setDate(thursday.getDate() + i * 7)
       thursday.setHours(18, 0, 0, 0)
@@ -561,45 +617,53 @@ async function seed() {
 
     console.log(`✅ Created membership: Ceramics for Novices`)
 
-    // Generate membership sessions (Tuesdays and Wednesdays at 20:00 for December)
+    // Generate 1-4 random membership sessions
+    const numberOfMembershipSessions = Math.floor(Math.random() * 4) + 1
     const membershipSessions = []
-    const membershipStart = new Date('2025-12-02') // First Tuesday in December
+    const membershipStart = new Date()
+    membershipStart.setDate(membershipStart.getDate() + 14) // Start 2 weeks from now
+    // Find next Tuesday
+    while (membershipStart.getDay() !== 2) {
+      membershipStart.setDate(membershipStart.getDate() + 1)
+    }
 
-    for (let day = 0; day < 31; day++) {
+    for (let i = 0; i < numberOfMembershipSessions; i++) {
       const date = new Date(membershipStart)
-      date.setDate(date.getDate() + day)
-      const dayOfWeek = date.getDay()
+      // Alternate between Tuesday and Wednesday, spreading over weeks
+      const daysToAdd = i * 7 + (i % 2) // Tuesday, then Wednesday next week, etc.
+      date.setDate(date.getDate() + daysToAdd)
+      date.setHours(20, 0, 0, 0)
+      const instanceEnd = new Date(date.getTime() + 120 * 60000)
 
-      // Tuesday (2) or Wednesday (3)
-      if (dayOfWeek === 2 || dayOfWeek === 3) {
-        date.setHours(20, 0, 0, 0)
-        const instanceEnd = new Date(date.getTime() + 120 * 60000)
-
-        const instance = await payload.create({
-          collection: 'class-sessions',
-          data: {
-            classTemplate: courseTemplate.id,
-            startDateTime: date.toISOString(),
-            endDateTime: instanceEnd.toISOString(),
-            timezone: 'Europe/Madrid',
-            status: 'scheduled',
-            availableSpots: 10,
-          },
-        })
-        membershipSessions.push(instance)
-      }
+      const instance = await payload.create({
+        collection: 'class-sessions',
+        data: {
+          classTemplate: courseTemplate.id,
+          startDateTime: date.toISOString(),
+          endDateTime: instanceEnd.toISOString(),
+          timezone: 'Europe/Madrid',
+          status: 'scheduled',
+          availableSpots: 10,
+        },
+      })
+      membershipSessions.push(instance)
     }
 
     console.log(`  📅 Generated ${membershipSessions.length} membership sessions`)
 
     // Create membership schedule
+    const scheduleStart = new Date()
+    scheduleStart.setDate(scheduleStart.getDate() + 14)
+    const scheduleEnd = new Date(scheduleStart)
+    scheduleEnd.setMonth(scheduleEnd.getMonth() + 1) // 1 month duration
+
     await payload.create({
       collection: 'membership-schedules',
       data: {
         membership: membership.id,
         classSessions: membershipSessions.map((i) => i.id),
-        startDate: new Date('2025-12-01').toISOString(),
-        endDate: new Date('2025-12-31').toISOString(),
+        startDate: scheduleStart.toISOString(),
+        endDate: scheduleEnd.toISOString(),
         isActive: true,
       },
     })
@@ -616,7 +680,7 @@ async function seed() {
     console.log(`  ✓ 1 Membership (Ceramics - Tue & Wed)`)
     console.log('\nYou can now:')
     console.log('  1. Visit http://localhost:4321/admin')
-    console.log('  2. Login with: admin@bozcocho.art / admin123')
+    console.log('  2. Login with: admin@bizcocho.art / admin123')
     console.log('  3. Explore Class Templates, Instructors, Class Sessions, Memberships, etc.')
   } catch (error) {
     console.error('❌ Error seeding database:', error)

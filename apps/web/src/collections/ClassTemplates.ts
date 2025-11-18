@@ -107,16 +107,7 @@ export const ClassTemplates: CollectionConfig = {
       defaultValue: 8,
       min: 1,
       admin: {
-        description: 'Maximum number of participants',
-      },
-    },
-    {
-      name: 'availableSpots',
-      type: 'number',
-      required: false,
-      min: 0,
-      admin: {
-        description: 'Current available spots (auto-calculated based on bookings). Leave empty to use maxCapacity.',
+        description: 'Maximum number of participants per session',
       },
     },
     {

@@ -2,8 +2,8 @@ import { getPayload } from 'payload'
 import config from '@payload-config'
 import type { Locale } from '@/i18n/config'
 import { getMessages } from '@/i18n/messages'
-import { LanguageSelector } from '@/components/LanguageSelector'
-import { ClassFilter } from '@/components/ClassFilter'
+import { LanguageSelector } from '@/components/ui/LanguageSelector'
+import { ClassFilter } from '@/components/class/ClassFilter'
 
 type Props = {
   params: Promise<{

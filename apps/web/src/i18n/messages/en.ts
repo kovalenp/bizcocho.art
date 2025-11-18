@@ -36,6 +36,9 @@ export const messages = {
   // Booking form
   booking: {
     title: 'Book Your Spot',
+    selectSession: 'Select a Session',
+    noSessions: 'No sessions available',
+    sessionFull: 'Session full',
     firstName: 'First Name',
     lastName: 'Last Name',
     email: 'Email',

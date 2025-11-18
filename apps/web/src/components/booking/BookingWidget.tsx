@@ -1,0 +1,168 @@
+'use client'
+
+import { useState } from 'react'
+import type { ClassTemplate, ClassSession } from '@/payload-types'
+import type { Messages } from '@/i18n/messages'
+import { BookingContactForm } from './BookingContactForm'
+
+type BookingWidgetProps = {
+  classTemplate: ClassTemplate
+  classSessions: ClassSession[]
+  selectedSessionId: string | null
+  onSessionSelect: (sessionId: string) => void
+  onSessionsUpdate?: (sessions: ClassSession[]) => void
+  messages: Messages
+}
+
+type BookingFormData = {
+  sessionId: string
+  firstName: string
+  lastName: string
+  email: string
+  phone: string
+  numberOfPeople: number
+}
+
+export function BookingWidget({
+  classTemplate,
+  classSessions,
+  selectedSessionId,
+  onSessionSelect,
+  onSessionsUpdate,
+  messages,
+}: BookingWidgetProps) {
+  const [submitStatus, setSubmitStatus] = useState<'idle' | 'success' | 'error'>('idle')
+  const [numberOfPeople, setNumberOfPeople] = useState(1)
+
+  const selectedSession = classSessions.find((s) => s.id.toString() === selectedSessionId)
+  const availableSpots = selectedSession
+    ? selectedSession.availableSpots !== undefined && selectedSession.availableSpots !== null
+      ? selectedSession.availableSpots
+      : classTemplate.maxCapacity || 0
+    : 0
+
+  const pricePerPerson = (classTemplate.priceCents || 0) / 100
+  const totalPrice = pricePerPerson * numberOfPeople
+
+  const handleSubmit = async (data: BookingFormData) => {
+    setSubmitStatus('idle')
+
+    try {
+      const response = await fetch('/api/bookings', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          classSession: data.sessionId,
+          firstName: data.firstName,
+          lastName: data.lastName,
+          email: data.email,
+          phone: data.phone,
+          numberOfPeople: data.numberOfPeople,
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error('Booking failed')
+      }
+
+      // Update session availability in parent component
+      if (onSessionsUpdate) {
+        const updatedSessions = classSessions.map((session) => {
+          if (session.id.toString() === data.sessionId) {
+            const currentSpots =
+              session.availableSpots !== undefined && session.availableSpots !== null
+                ? session.availableSpots
+                : classTemplate.maxCapacity || 0
+            return {
+              ...session,
+              availableSpots: Math.max(0, currentSpots - data.numberOfPeople),
+            }
+          }
+          return session
+        })
+        onSessionsUpdate(updatedSessions)
+      }
+
+      setSubmitStatus('success')
+      onSessionSelect('')
+      setNumberOfPeople(1)
+    } catch (error) {
+      console.error('Booking error:', error)
+      setSubmitStatus('error')
+    }
+  }
+
+  const handleNumberOfPeopleChange = (newNumber: number) => {
+    setNumberOfPeople(newNumber)
+  }
+
+  return (
+    <div className="bg-white rounded-lg p-6 shadow-md sticky top-8">
+      <h2 className="text-2xl font-semibold text-gray-900 mb-4">{messages.booking.title}</h2>
+
+      {submitStatus === 'success' ? (
+        <div className="p-8 bg-green-50 border-2 border-green-300 rounded-lg text-center">
+          <div className="text-6xl mb-4">✓</div>
+          <h3 className="text-2xl font-semibold text-green-900 mb-2">
+            {messages.booking.successTitle}
+          </h3>
+          <p className="text-green-800 text-lg">{messages.booking.success}</p>
+        </div>
+      ) : (
+        <>
+          {/* Price Display */}
+          <div className="mb-6 p-4 bg-gray-50 rounded-lg">
+            <div className="flex items-baseline justify-between">
+              <div>
+                <div className="text-sm text-gray-600 mb-1">Total Price</div>
+                <div className="text-3xl font-bold text-primary">€{totalPrice.toFixed(2)}</div>
+              </div>
+              {numberOfPeople > 1 && (
+                <div className="text-sm text-gray-500">
+                  €{pricePerPerson.toFixed(2)} × {numberOfPeople}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Error Message */}
+          {submitStatus === 'error' && (
+            <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg text-red-800 text-sm">
+              {messages.booking.error}
+            </div>
+          )}
+
+          {/* Booking Form - Only show when session is selected */}
+          {selectedSessionId && selectedSession && (
+            <>
+              {availableSpots === 0 ? (
+                <div className="p-6 bg-yellow-50 border border-yellow-200 rounded-lg text-center">
+                  <div className="text-yellow-800 font-semibold mb-2">Session Full</div>
+                  <p className="text-sm text-yellow-700">
+                    This session is fully booked. Please select another session.
+                  </p>
+                </div>
+              ) : (
+                <BookingContactForm
+                  sessionId={selectedSessionId}
+                  maxSpots={availableSpots}
+                  onSubmit={handleSubmit}
+                  onNumberOfPeopleChange={handleNumberOfPeopleChange}
+                  messages={messages}
+                />
+              )}
+            </>
+          )}
+
+          {!selectedSessionId && classSessions.length > 0 && (
+            <p className="text-sm text-gray-500 text-center py-4">
+              Please select a session to continue
+            </p>
+          )}
+        </>
+      )}
+    </div>
+  )
+}

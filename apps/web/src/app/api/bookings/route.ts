@@ -3,7 +3,7 @@ import config from '@payload-config'
 import { NextRequest, NextResponse } from 'next/server'
 
 type BookingRequestBody = {
-  classTemplate: string
+  classSession: string
   firstName: string
   lastName: string
   email: string
@@ -14,10 +14,10 @@ type BookingRequestBody = {
 export async function POST(request: NextRequest) {
   try {
     const body: BookingRequestBody = await request.json()
-    const { classTemplate, firstName, lastName, email, phone, numberOfPeople } = body
+    const { classSession, firstName, lastName, email, phone, numberOfPeople } = body
 
     // Validate required fields
-    if (!classTemplate || !firstName || !lastName || !email || !phone || !numberOfPeople) {
+    if (!classSession || !firstName || !lastName || !email || !phone || !numberOfPeople) {
       return NextResponse.json(
         { error: 'Missing required fields' },
         { status: 400 }
@@ -26,23 +26,40 @@ export async function POST(request: NextRequest) {
 
     const payload = await getPayload({ config })
 
-    // Check if the class template exists
-    const classTemplateDoc = await payload.findByID({
-      collection: 'class-templates',
-      id: classTemplate,
+    // Check if the class session exists
+    const classSessionDoc = await payload.findByID({
+      collection: 'class-sessions',
+      id: classSession,
+      depth: 2,
     })
 
-    if (!classTemplateDoc) {
+    if (!classSessionDoc) {
       return NextResponse.json(
-        { error: 'Class template not found' },
+        { error: 'Class session not found' },
         { status: 404 }
       )
     }
 
-    // Get current available spots (use availableSpots if set, otherwise use maxCapacity)
-    const currentAvailableSpots = classTemplateDoc.availableSpots !== undefined && classTemplateDoc.availableSpots !== null
-      ? classTemplateDoc.availableSpots
-      : classTemplateDoc.maxCapacity || 0
+    // Check if session is cancelled
+    if (classSessionDoc.status === 'cancelled') {
+      return NextResponse.json(
+        { error: 'This class session has been cancelled' },
+        { status: 400 }
+      )
+    }
+
+    // Get the class template to determine max capacity
+    const classTemplate = typeof classSessionDoc.classTemplate === 'object'
+      ? classSessionDoc.classTemplate
+      : await payload.findByID({
+          collection: 'class-templates',
+          id: typeof classSessionDoc.classTemplate === 'number' ? classSessionDoc.classTemplate : parseInt(classSessionDoc.classTemplate as string, 10),
+        })
+
+    // Get current available spots (use session's availableSpots if set, otherwise use template's maxCapacity)
+    const currentAvailableSpots = classSessionDoc.availableSpots !== undefined && classSessionDoc.availableSpots !== null
+      ? classSessionDoc.availableSpots
+      : classTemplate.maxCapacity || 0
 
     // Check if there's enough capacity
     if (numberOfPeople > currentAvailableSpots) {
@@ -56,7 +73,7 @@ export async function POST(request: NextRequest) {
     const booking = await payload.create({
       collection: 'bookings',
       data: {
-        classTemplate: typeof classTemplate === 'string' ? parseInt(classTemplate, 10) : classTemplate,
+        classSession: typeof classSession === 'string' ? parseInt(classSession, 10) : classSession,
         firstName,
         lastName,
         email,
@@ -68,12 +85,12 @@ export async function POST(request: NextRequest) {
       },
     })
 
-    // Update the available spots
+    // Update the session's available spots
     const newAvailableSpots = currentAvailableSpots - numberOfPeople
 
     await payload.update({
-      collection: 'class-templates',
-      id: classTemplate,
+      collection: 'class-sessions',
+      id: classSession,
       data: {
         availableSpots: Math.max(0, newAvailableSpots),
       },

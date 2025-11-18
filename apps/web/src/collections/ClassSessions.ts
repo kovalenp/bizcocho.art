@@ -69,9 +69,10 @@ export const ClassSessions: CollectionConfig = {
     {
       name: 'availableSpots',
       type: 'number',
+      required: false,
+      min: 0,
       admin: {
-        description: 'Available spots (calculated: maxCapacity - bookings). Updated via hooks.',
-        readOnly: true,
+        description: 'Current available spots (auto-calculated based on bookings). Leave empty to inherit from class template maxCapacity.',
       },
     },
     {
