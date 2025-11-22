@@ -54,6 +54,8 @@ export const messages = {
     numberOfPeople: 'Number of People',
     submit: 'Confirm Booking',
     submitting: 'Booking...',
+    redirecting: 'Redirecting to payment...',
+    pleaseWait: 'Please wait while we redirect you to secure checkout.',
     successTitle: 'Booking Confirmed!',
     success: 'Check your email for details.',
     error: 'Failed to create booking. Please try again.',

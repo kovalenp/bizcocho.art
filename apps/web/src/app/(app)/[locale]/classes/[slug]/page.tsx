@@ -44,7 +44,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const title = classTemplate.title
   const description =
     classTemplate.description?.slice(0, 160) ||
-    `Join our ${title} class at bizcocho.art. ${classTemplate.duration} minutes of creative learning.`
+    `Join our ${title} class at bizcocho.art. ${classTemplate.durationMinutes} minutes of creative learning.`
 
   const imageUrl = featuredImage?.url
     ? `https://bizcocho.art${featuredImage.url}`
@@ -169,6 +169,7 @@ export default async function ClassDetailPage({ params }: Props) {
           tags={tags}
           instructor={instructor}
           messages={messages}
+          locale={locale}
         />
       </div>
     </div>

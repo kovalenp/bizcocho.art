@@ -49,6 +49,8 @@ type MessageStructure = {
     numberOfPeople: string
     submit: string
     submitting: string
+    redirecting: string
+    pleaseWait: string
     successTitle: string
     success: string
     error: string

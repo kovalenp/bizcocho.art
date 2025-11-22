@@ -17,6 +17,7 @@ type ClassDetailLayoutProps = {
   tags: Tag[]
   instructor: Instructor | null
   messages: Messages
+  locale: string
 }
 
 export function ClassDetailLayout({
@@ -27,6 +28,7 @@ export function ClassDetailLayout({
   tags,
   instructor,
   messages,
+  locale,
 }: ClassDetailLayoutProps) {
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null)
   const [localSessions, setLocalSessions] = useState(classSessions)
@@ -84,6 +86,7 @@ export function ClassDetailLayout({
           onSessionSelect={setSelectedSessionId}
           onSessionsUpdate={setLocalSessions}
           messages={messages}
+          locale={locale}
         />
       </div>
     </div>

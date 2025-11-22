@@ -82,7 +82,7 @@ export const ClassTemplates: CollectionConfig = {
       required: true,
       min: 0,
       admin: {
-        description: 'Price per session in cents (e.g., 4500 = €45.00)',
+        description: 'Price per person in cents (e.g., 4500 = €45.00). Total booking price = priceCents × numberOfPeople',
       },
     },
     {

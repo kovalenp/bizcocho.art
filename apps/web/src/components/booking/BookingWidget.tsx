@@ -12,6 +12,7 @@ type BookingWidgetProps = {
   onSessionSelect: (sessionId: string) => void
   onSessionsUpdate?: (sessions: ClassSession[]) => void
   messages: Messages
+  locale: string
 }
 
 type BookingFormData = {
@@ -27,11 +28,12 @@ export function BookingWidget({
   classTemplate,
   classSessions,
   selectedSessionId,
-  onSessionSelect,
-  onSessionsUpdate,
+  onSessionSelect: _onSessionSelect,
+  onSessionsUpdate: _onSessionsUpdate,
   messages,
+  locale,
 }: BookingWidgetProps) {
-  const [submitStatus, setSubmitStatus] = useState<'idle' | 'success' | 'error'>('idle')
+  const [submitStatus, setSubmitStatus] = useState<'idle' | 'success' | 'error' | 'loading'>('idle')
   const [numberOfPeople, setNumberOfPeople] = useState(1)
 
   const selectedSession = classSessions.find((s) => s.id.toString() === selectedSessionId)
@@ -45,10 +47,10 @@ export function BookingWidget({
   const totalPrice = pricePerPerson * numberOfPeople
 
   const handleSubmit = async (data: BookingFormData) => {
-    setSubmitStatus('idle')
+    setSubmitStatus('loading')
 
     try {
-      const response = await fetch('/api/bookings', {
+      const response = await fetch('/api/checkout/create-session', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -60,34 +62,27 @@ export function BookingWidget({
           email: data.email,
           phone: data.phone,
           numberOfPeople: data.numberOfPeople,
+          locale: locale,
         }),
       })
 
+      const result = await response.json()
+      console.log('Checkout API response:', result)
+
       if (!response.ok) {
-        throw new Error('Booking failed')
+        const errorMsg = result.error || 'Checkout session creation failed'
+        console.error('Checkout API error:', errorMsg, result)
+        throw new Error(errorMsg)
       }
 
-      // Update session availability in parent component
-      if (onSessionsUpdate) {
-        const updatedSessions = classSessions.map((session) => {
-          if (session.id.toString() === data.sessionId) {
-            const currentSpots =
-              session.availableSpots !== undefined && session.availableSpots !== null
-                ? session.availableSpots
-                : classTemplate.maxCapacity || 0
-            return {
-              ...session,
-              availableSpots: Math.max(0, currentSpots - data.numberOfPeople),
-            }
-          }
-          return session
-        })
-        onSessionsUpdate(updatedSessions)
+      if (result.checkoutUrl) {
+        console.log('Redirecting to Stripe:', result.checkoutUrl)
+        // Redirect to Stripe checkout
+        window.location.href = result.checkoutUrl
+      } else {
+        console.error('No checkout URL in response:', result)
+        throw new Error('No checkout URL received')
       }
-
-      setSubmitStatus('success')
-      onSessionSelect('')
-      setNumberOfPeople(1)
     } catch (error) {
       console.error('Booking error:', error)
       setSubmitStatus('error')
@@ -102,7 +97,17 @@ export function BookingWidget({
     <div className="bg-white rounded-lg p-6 shadow-md sticky top-8">
       <h2 className="text-2xl font-semibold text-gray-900 mb-4">{messages.booking.title}</h2>
 
-      {submitStatus === 'success' ? (
+      {submitStatus === 'loading' ? (
+        <div className="p-8 bg-blue-50 border-2 border-blue-300 rounded-lg text-center">
+          <div className="animate-spin text-6xl mb-4">⟳</div>
+          <h3 className="text-2xl font-semibold text-blue-900 mb-2">
+            {messages.booking.redirecting || 'Redirecting to payment...'}
+          </h3>
+          <p className="text-blue-800 text-lg">
+            {messages.booking.pleaseWait || 'Please wait while we redirect you to secure checkout.'}
+          </p>
+        </div>
+      ) : submitStatus === 'success' ? (
         <div className="p-8 bg-green-50 border-2 border-green-300 rounded-lg text-center">
           <div className="text-6xl mb-4">✓</div>
           <h3 className="text-2xl font-semibold text-green-900 mb-2">

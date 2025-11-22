@@ -54,6 +54,8 @@ export const messages = {
     numberOfPeople: 'Número de Personas',
     submit: 'Confirmar Reserva',
     submitting: 'Reservando...',
+    redirecting: 'Redirigiendo al pago...',
+    pleaseWait: 'Por favor espera mientras te redirigimos a la pasarela de pago segura.',
     successTitle: '¡Reserva Confirmada!',
     success: 'Revisa tu correo electrónico para más detalles.',
     error: 'Error al crear la reserva. Por favor, inténtalo de nuevo.',
