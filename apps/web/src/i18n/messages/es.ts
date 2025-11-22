@@ -6,10 +6,18 @@ export const messages = {
     backToClasses: 'Volver a Clases',
   },
 
+  // Navigation
+  nav: {
+    events: 'Eventos',
+    courses: 'Cursos',
+    giftCertificates: 'Certificados de Regalo',
+    about: 'Sobre Nosotros',
+  },
+
   // Home page
   home: {
-    title: 'bizcocho.art',
-    subtitle: 'Descubre tu creatividad a través de clases de arte',
+    title: 'Descubre Tu Viaje Creativo',
+    subtitle: 'Únete a nuestra vibrante comunidad de artistas. Desde talleres para principiantes hasta clases magistrales avanzadas, encuentra la experiencia artística perfecta para ti.',
     availableClasses: 'Clases Disponibles',
     noClasses: 'No hay clases disponibles',
     noClassesMessage: '¡Vuelve pronto para nuevas clases de arte!',

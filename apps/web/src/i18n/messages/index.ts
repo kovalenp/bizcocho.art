@@ -8,6 +8,12 @@ type MessageStructure = {
     all: string
     backToClasses: string
   }
+  nav: {
+    events: string
+    courses: string
+    giftCertificates: string
+    about: string
+  }
   home: {
     title: string
     subtitle: string

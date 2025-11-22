@@ -28,36 +28,37 @@ export function LanguageSelector({ currentLocale }: Props) {
   }
 
   return (
-    <div
-      style={{
-        display: 'flex',
-        gap: '0.5rem',
-        alignItems: 'center',
-      }}
-    >
+    <div className="flex gap-2 items-center">
       {locales.map((locale) => (
         <button
           key={locale}
           onClick={() => handleLocaleChange(locale)}
-          style={{
-            padding: '0.5rem 0.75rem',
-            border: currentLocale === locale ? '2px solid #007acc' : '2px solid transparent',
-            borderRadius: '6px',
-            background: currentLocale === locale ? '#f0f8ff' : 'transparent',
-            cursor: 'pointer',
-            fontSize: '1.5rem',
-            lineHeight: 1,
-            transition: 'all 0.2s ease',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.25rem',
-          }}
+          className={`
+            relative px-3 py-2 rounded-lg text-2xl
+            transition-all duration-300 ease-in-out
+            transform hover:scale-110 active:scale-95
+            ${
+              currentLocale === locale
+                ? 'bg-primary/10 ring-2 ring-primary shadow-sm'
+                : 'bg-transparent hover:bg-gray-100'
+            }
+          `}
           title={localeNames[locale]}
           aria-label={`Switch to ${localeNames[locale]}`}
         >
-          <span role="img" aria-label={localeNames[locale]}>
+          <span
+            role="img"
+            aria-label={localeNames[locale]}
+            className={`
+              inline-block transition-all duration-300
+              ${currentLocale === locale ? 'animate-pulse' : ''}
+            `}
+          >
             {localeFlags[locale]}
           </span>
+          {currentLocale === locale && (
+            <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 bg-primary rounded-full animate-bounce" />
+          )}
         </button>
       ))}
     </div>

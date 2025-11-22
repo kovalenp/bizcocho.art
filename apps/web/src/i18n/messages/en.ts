@@ -6,10 +6,18 @@ export const messages = {
     backToClasses: 'Back to Classes',
   },
 
+  // Navigation
+  nav: {
+    events: 'Events',
+    courses: 'Courses',
+    giftCertificates: 'Gift Certificates',
+    about: 'About Us',
+  },
+
   // Home page
   home: {
-    title: 'bizcocho.art',
-    subtitle: 'Discover your creativity through art classes',
+    title: 'Discover Your Creative Journey',
+    subtitle: 'Join our vibrant community of artists. From beginner-friendly workshops to advanced masterclasses, find the perfect art experience for you.',
     availableClasses: 'Available Classes',
     noClasses: 'No classes available',
     noClassesMessage: 'Check back soon for new art classes!',
