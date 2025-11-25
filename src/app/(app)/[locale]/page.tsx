@@ -4,6 +4,7 @@ import type { Locale } from '@/i18n/config'
 import { getMessages } from '@/i18n/messages'
 import { ClassFilter } from '@/components/class/ClassFilter'
 import type { Metadata } from 'next'
+import { createClassDisplayItem, createCourseDisplayItem, type DisplayItem } from '@/types/display'
 
 type Props = {
   params: Promise<{
@@ -80,9 +81,20 @@ export default async function HomePage({ params }: Props) {
   const payload = await getPayload({ config })
   const messages = getMessages(locale)
 
-  const [classTemplates, tags] = await Promise.all([
+  const [classTemplates, courses, tags] = await Promise.all([
     payload.find({
-      collection: 'class-templates',
+      collection: 'classes',
+      where: {
+        isPublished: {
+          equals: true,
+        },
+      },
+      depth: 2,
+      limit: 10,
+      locale,
+    }),
+    payload.find({
+      collection: 'courses',
       where: {
         isPublished: {
           equals: true,
@@ -98,6 +110,12 @@ export default async function HomePage({ params }: Props) {
       locale,
     }),
   ])
+
+  // Combine classes and courses for display with proper type discrimination
+  const allItems: DisplayItem[] = [
+    ...classTemplates.docs.map(createClassDisplayItem),
+    ...courses.docs.map(createCourseDisplayItem),
+  ]
 
   return (
     <main className="py-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
@@ -115,8 +133,8 @@ export default async function HomePage({ params }: Props) {
           {messages.home.availableClasses}
         </h2>
 
-        {classTemplates.docs.length > 0 ? (
-          <ClassFilter classes={classTemplates.docs} tags={tags.docs} messages={messages} locale={locale} />
+        {allItems.length > 0 ? (
+          <ClassFilter classes={allItems} tags={tags.docs} messages={messages} locale={locale} />
         ) : (
           <div className="text-center p-12 bg-gray-50 rounded-lg">
             <h3 className="text-gray-600 text-lg font-medium">

@@ -4,7 +4,7 @@ import type { Locale } from '@/i18n/config'
 import { getMessages } from '@/i18n/messages'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import type { ClassTemplate, Media, Instructor, Tag } from '@/payload-types'
+import type { Class, Media, Instructor, Tag } from '@/payload-types'
 import { ClassDetailLayout } from '@/components/class/ClassDetailLayout'
 import type { Metadata } from 'next'
 
@@ -20,7 +20,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const payload = await getPayload({ config })
 
   const classTemplates = await payload.find({
-    collection: 'class-templates',
+    collection: 'classes',
     where: {
       slug: { equals: slug },
       isPublished: { equals: true },
@@ -36,7 +36,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     }
   }
 
-  const classTemplate = classTemplates.docs[0] as ClassTemplate
+  const classTemplate = classTemplates.docs[0] as Class
   const featuredImage = classTemplate.featuredImage as Media | null
   const instructor = classTemplate.instructor as Instructor
   const tags = (classTemplate.tags || []) as Tag[]
@@ -107,7 +107,7 @@ export default async function ClassDetailPage({ params }: Props) {
   const messages = getMessages(locale)
 
   const classTemplates = await payload.find({
-    collection: 'class-templates',
+    collection: 'classes',
     where: {
       slug: {
         equals: slug,
@@ -125,17 +125,20 @@ export default async function ClassDetailPage({ params }: Props) {
     notFound()
   }
 
-  const classTemplate = classTemplates.docs[0] as ClassTemplate
+  const classTemplate = classTemplates.docs[0] as Class
   const instructor = classTemplate.instructor as Instructor
   const featuredImage = classTemplate.featuredImage as Media | null
   const gallery = (classTemplate.gallery || []) as Media[]
   const tags = (classTemplate.tags || []) as Tag[]
 
-  // Fetch upcoming class sessions for this template
+  // Fetch upcoming class sessions for this class
   const classSessions = await payload.find({
-    collection: 'class-sessions',
+    collection: 'sessions',
     where: {
-      classTemplate: {
+      sessionType: {
+        equals: 'class',
+      },
+      class: {
         equals: classTemplate.id,
       },
       status: {

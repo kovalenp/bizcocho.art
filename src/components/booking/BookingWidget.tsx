@@ -1,16 +1,16 @@
 'use client'
 
 import { useState } from 'react'
-import type { ClassTemplate, ClassSession } from '@/payload-types'
+import type { Class, Session } from '@/payload-types'
 import type { Messages } from '@/i18n/messages'
 import { BookingContactForm } from './BookingContactForm'
 
 type BookingWidgetProps = {
-  classTemplate: ClassTemplate
-  classSessions: ClassSession[]
+  classTemplate: Class
+  classSessions: Session[]
   selectedSessionId: string | null
   onSessionSelect: (sessionId: string) => void
-  onSessionsUpdate?: (sessions: ClassSession[]) => void
+  onSessionsUpdate?: (sessions: Session[]) => void
   messages: Messages
   locale: string
 }
@@ -56,7 +56,7 @@ export function BookingWidget({
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          classSession: data.sessionId,
+          session: data.sessionId,
           firstName: data.firstName,
           lastName: data.lastName,
           email: data.email,

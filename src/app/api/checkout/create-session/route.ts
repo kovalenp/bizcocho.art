@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import Stripe from 'stripe'
 
 type CheckoutRequestBody = {
-  classSession: string
+  session: string  // Changed from classSession
   firstName: string
   lastName: string
   email: string
@@ -26,10 +26,10 @@ export async function POST(request: NextRequest) {
   const stripe = getStripe()
   try {
     const body: CheckoutRequestBody = await request.json()
-    const { classSession, firstName, lastName, email, phone, numberOfPeople, locale = 'en' } = body
+    const { session: sessionId, firstName, lastName, email, phone, numberOfPeople, locale = 'en' } = body
 
     // Validate required fields
-    if (!classSession || !firstName || !lastName || !email || !phone || !numberOfPeople) {
+    if (!sessionId || !firstName || !lastName || !email || !phone || !numberOfPeople) {
       return NextResponse.json(
         { error: 'Missing required fields' },
         { status: 400 }
@@ -38,42 +38,49 @@ export async function POST(request: NextRequest) {
 
     const payload = await getPayload({ config })
 
-    // Check if the class session exists
-    const classSessionDoc = await payload.findByID({
-      collection: 'class-sessions',
-      id: classSession,
+    // Check if the session exists
+    const sessionDoc = await payload.findByID({
+      collection: 'sessions',
+      id: sessionId,
       depth: 2,
     })
 
-    if (!classSessionDoc) {
+    if (!sessionDoc) {
       return NextResponse.json(
-        { error: 'Class session not found' },
+        { error: 'Session not found' },
         { status: 404 }
       )
     }
 
     // Check if session is cancelled
-    if (classSessionDoc.status === 'cancelled') {
+    if (sessionDoc.status === 'cancelled') {
       return NextResponse.json(
-        { error: 'This class session has been cancelled' },
+        { error: 'This session has been cancelled' },
         { status: 400 }
       )
     }
 
-    // Get the class template to determine max capacity and price
-    const classTemplate = typeof classSessionDoc.classTemplate === 'object'
-      ? classSessionDoc.classTemplate
+    // Get the class to determine max capacity and price
+    if (!sessionDoc.class) {
+      return NextResponse.json(
+        { error: 'Session has no associated class' },
+        { status: 400 }
+      )
+    }
+
+    const classDoc = typeof sessionDoc.class === 'object'
+      ? sessionDoc.class
       : await payload.findByID({
-          collection: 'class-templates',
-          id: typeof classSessionDoc.classTemplate === 'number'
-            ? classSessionDoc.classTemplate
-            : parseInt(classSessionDoc.classTemplate as string, 10),
+          collection: 'classes',
+          id: typeof sessionDoc.class === 'number'
+            ? sessionDoc.class
+            : parseInt(String(sessionDoc.class), 10),
         })
 
     // Get current available spots
-    const currentAvailableSpots = classSessionDoc.availableSpots !== undefined && classSessionDoc.availableSpots !== null
-      ? classSessionDoc.availableSpots
-      : classTemplate.maxCapacity || 0
+    const currentAvailableSpots = sessionDoc.availableSpots !== undefined && sessionDoc.availableSpots !== null
+      ? sessionDoc.availableSpots
+      : classDoc.maxCapacity || 0
 
     // Check if there's enough capacity
     if (numberOfPeople > currentAvailableSpots) {
@@ -84,39 +91,80 @@ export async function POST(request: NextRequest) {
     }
 
     // Calculate total price (priceCents × numberOfPeople)
-    const pricePerPersonCents = classTemplate.priceCents || 0
+    const pricePerPersonCents = classDoc.priceCents || 0
     const totalPriceCents = pricePerPersonCents * numberOfPeople
-    const currency = classTemplate.currency || 'eur'
+    const currency = classDoc.currency || 'eur'
 
-    // Create temporary booking (pending payment)
-    const booking = await payload.create({
-      collection: 'bookings',
-      data: {
-        classSession: typeof classSession === 'string' ? parseInt(classSession, 10) : classSession,
-        firstName,
-        lastName,
-        email,
-        phone,
-        numberOfPeople,
-        status: 'pending',
-        paymentStatus: 'unpaid',
-        bookingDate: new Date().toISOString(),
-      },
-    })
-
-    // Decrement available spots immediately (will be restored if payment fails)
+    // P1 FIX: Atomic capacity reservation
+    // First, attempt to decrement spots and verify it didn't go negative
     const newAvailableSpots = currentAvailableSpots - numberOfPeople
 
-    await payload.update({
-      collection: 'class-sessions',
-      id: classSession,
+    const updatedSession = await payload.update({
+      collection: 'sessions',
+      id: sessionId,
       data: {
-        availableSpots: Math.max(0, newAvailableSpots),
+        availableSpots: newAvailableSpots,
       },
     })
 
-    // Format class session date and time for display
-    const startDateTime = new Date(classSessionDoc.startDateTime)
+    // Verify the update was valid (re-fetch to check for race condition)
+    const verifiedSession = await payload.findByID({
+      collection: 'sessions',
+      id: sessionId,
+    })
+
+    // If spots went negative due to race condition, rollback and reject
+    if (verifiedSession.availableSpots != null && verifiedSession.availableSpots < 0) {
+      // Rollback: restore the spots we just took
+      await payload.update({
+        collection: 'sessions',
+        id: sessionId,
+        data: {
+          availableSpots: (verifiedSession.availableSpots || 0) + numberOfPeople,
+        },
+      })
+      return NextResponse.json(
+        { error: 'Not enough capacity available - please try again' },
+        { status: 409 } // Conflict
+      )
+    }
+
+    // Create temporary booking (pending payment)
+    // Set expiration to 30 minutes (Stripe checkout session default timeout)
+    const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString()
+
+    let booking
+    try {
+      booking = await payload.create({
+        collection: 'bookings',
+        data: {
+          bookingType: 'class',
+          session: typeof sessionId === 'string' ? parseInt(sessionId, 10) : sessionId,
+          firstName,
+          lastName,
+          email,
+          phone,
+          numberOfPeople,
+          status: 'pending',
+          paymentStatus: 'unpaid',
+          bookingDate: new Date().toISOString(),
+          expiresAt,
+        },
+      })
+    } catch (bookingError) {
+      // Rollback spots if booking creation fails
+      await payload.update({
+        collection: 'sessions',
+        id: sessionId,
+        data: {
+          availableSpots: (verifiedSession.availableSpots || 0) + numberOfPeople,
+        },
+      })
+      throw bookingError
+    }
+
+    // Format session date and time for display
+    const startDateTime = new Date(sessionDoc.startDateTime)
     const sessionDate = startDateTime.toLocaleDateString('en-US', {
       weekday: 'long',
       year: 'numeric',
@@ -129,7 +177,7 @@ export async function POST(request: NextRequest) {
     })
 
     // Get class title (handle localized field)
-    const classTitle = (classTemplate.title as string) || 'Class Booking'
+    const classTitle = (classDoc.title as string) || 'Class Booking'
 
     // Create Stripe Checkout Session
     const session = await stripe.checkout.sessions.create({
@@ -153,11 +201,13 @@ export async function POST(request: NextRequest) {
       customer_email: email,
       metadata: {
         bookingId: booking.id.toString(),
-        classSessionId: classSession,
+        bookingType: 'class',
+        sessionId: sessionId.toString(),
         firstName,
         lastName,
         phone,
         numberOfPeople: numberOfPeople.toString(),
+        locale,
       },
     })
 

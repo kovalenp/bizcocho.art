@@ -1,11 +1,11 @@
 'use client'
 
-import type { ClassSession, ClassTemplate } from '@/payload-types'
+import type { Session, Class } from '@/payload-types'
 import type { Messages } from '@/i18n/messages'
 
 type SessionSelectorProps = {
-  sessions: ClassSession[]
-  classTemplate: ClassTemplate
+  sessions: Session[]
+  classTemplate: Class
   selectedSessionId: string | null
   onSessionSelect: (sessionId: string) => void
   messages: Messages

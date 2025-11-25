@@ -70,29 +70,32 @@ export interface Config {
     users: User;
     media: Media;
     tags: Tag;
-    'class-templates': ClassTemplate;
+    classes: Class;
+    courses: Course;
     instructors: Instructor;
-    'class-sessions': ClassSession;
-    memberships: Membership;
-    'membership-schedules': MembershipSchedule;
+    sessions: Session;
     bookings: Booking;
-    subscriptions: Subscription;
     'payload-locked-documents': PayloadLockedDocument;
     'payload-preferences': PayloadPreference;
     'payload-migrations': PayloadMigration;
   };
-  collectionsJoins: {};
+  collectionsJoins: {
+    classes: {
+      sessions: 'sessions';
+    };
+    courses: {
+      sessions: 'sessions';
+    };
+  };
   collectionsSelect: {
     users: UsersSelect<false> | UsersSelect<true>;
     media: MediaSelect<false> | MediaSelect<true>;
     tags: TagsSelect<false> | TagsSelect<true>;
-    'class-templates': ClassTemplatesSelect<false> | ClassTemplatesSelect<true>;
+    classes: ClassesSelect<false> | ClassesSelect<true>;
+    courses: CoursesSelect<false> | CoursesSelect<true>;
     instructors: InstructorsSelect<false> | InstructorsSelect<true>;
-    'class-sessions': ClassSessionsSelect<false> | ClassSessionsSelect<true>;
-    memberships: MembershipsSelect<false> | MembershipsSelect<true>;
-    'membership-schedules': MembershipSchedulesSelect<false> | MembershipSchedulesSelect<true>;
+    sessions: SessionsSelect<false> | SessionsSelect<true>;
     bookings: BookingsSelect<false> | BookingsSelect<true>;
-    subscriptions: SubscriptionsSelect<false> | SubscriptionsSelect<true>;
     'payload-locked-documents': PayloadLockedDocumentsSelect<false> | PayloadLockedDocumentsSelect<true>;
     'payload-preferences': PayloadPreferencesSelect<false> | PayloadPreferencesSelect<true>;
     'payload-migrations': PayloadMigrationsSelect<false> | PayloadMigrationsSelect<true>;
@@ -214,84 +217,64 @@ export interface Tag {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
- * via the `definition` "class-templates".
+ * via the `definition` "classes".
  */
-export interface ClassTemplate {
+export interface Class {
   id: number;
   title: string;
   slug: string;
   /**
-   * One-time: Single event. Recurring: Repeating schedule. Membership Template: Part of a subscription membership.
+   * One-time: Create sessions manually. Recurring: Auto-generate sessions from schedule.
    */
-  classType: 'one-time' | 'recurring' | 'membership-template';
+  classType: 'one-time' | 'recurring';
   description?: string | null;
-  /**
-   * Assigned instructor for this class
-   */
   instructor?: (number | null) | Instructor;
-  /**
-   * Main image for the class
-   */
   featuredImage?: (number | null) | Media;
-  /**
-   * Additional images for class detail carousel
-   */
   gallery?: (number | Media)[] | null;
   /**
-   * Price per person in cents (e.g., 4500 = €45.00). Total booking price = priceCents × numberOfPeople
+   * Price per person in cents (e.g., 4500 = €45.00)
    */
   priceCents: number;
-  currency?: string | null;
+  currency?: ('eur' | 'usd') | null;
   /**
    * Duration of the class in minutes
    */
   durationMinutes: number;
   /**
-   * Maximum number of participants per session
+   * Maximum participants per session
    */
   maxCapacity: number;
-  /**
-   * Class location or venue
-   */
   location?: string | null;
-  /**
-   * Tags for filtering (e.g., Kids & Family, Wine, Ceramics)
-   */
   tags?: (number | Tag)[] | null;
-  /**
-   * Define recurring schedules for this class (e.g., "Every Thursday at 18:00")
-   */
-  recurrencePatterns?:
-    | {
-        frequency: 'weekly' | 'biweekly' | 'monthly';
-        /**
-         * Days of the week this class occurs
-         */
-        daysOfWeek: ('1' | '2' | '3' | '4' | '5' | '6' | '0')[];
-        /**
-         * Start time in HH:MM format (e.g., "18:00")
-         */
-        startTime: string;
-        /**
-         * Date when the recurrence starts
-         */
-        startDate: string;
-        /**
-         * Date when the recurrence ends (leave empty for indefinite)
-         */
-        endDate?: string | null;
-        /**
-         * Timezone for the recurring schedule
-         */
-        timezone: string;
-        /**
-         * Whether this recurrence pattern is currently active
-         */
-        isActive?: boolean | null;
-        id?: string | null;
-      }[]
-    | null;
   isPublished?: boolean | null;
+  /**
+   * Configure automatic session generation for recurring classes.
+   */
+  schedule?: {
+    /**
+     * First session date
+     */
+    startDate?: string | null;
+    /**
+     * Last session date (leave empty for 3 months)
+     */
+    endDate?: string | null;
+    recurrence?: ('weekly' | 'biweekly' | 'monthly') | null;
+    daysOfWeek?: ('0' | '1' | '2' | '3' | '4' | '5' | '6')[] | null;
+    /**
+     * Start time in HH:MM format
+     */
+    startTime?: string | null;
+    timezone?: string | null;
+  };
+  /**
+   * Sessions for this class
+   */
+  sessions?: {
+    docs?: (number | Session)[];
+    hasNextPage?: boolean;
+    totalDocs?: number;
+  };
   updatedAt: string;
   createdAt: string;
 }
@@ -329,29 +312,33 @@ export interface Instructor {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
- * via the `definition` "class-sessions".
+ * via the `definition` "sessions".
  */
-export interface ClassSession {
+export interface Session {
   id: number;
   /**
-   * The class template this session belongs to
+   * Auto-set based on class/course relationship
    */
-  classTemplate: number | ClassTemplate;
+  sessionType: 'class' | 'course';
   /**
-   * Start date and time (stored in UTC)
+   * The class this session belongs to
+   */
+  class?: (number | null) | Class;
+  /**
+   * The course this session belongs to
+   */
+  course?: (number | null) | Course;
+  /**
+   * Session start date and time
    */
   startDateTime: string;
   /**
-   * End date and time (stored in UTC)
-   */
-  endDateTime: string;
-  /**
-   * Timezone for display purposes (e.g., "Europe/Madrid")
+   * Timezone (e.g., "Europe/Madrid")
    */
   timezone?: string | null;
   status: 'scheduled' | 'cancelled' | 'completed';
   /**
-   * Current available spots (auto-calculated based on bookings). Leave empty to inherit from class template maxCapacity.
+   * Auto-initialized from class/course maxCapacity, updated by bookings
    */
   availableSpots?: number | null;
   /**
@@ -363,70 +350,96 @@ export interface ClassSession {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
- * via the `definition` "memberships".
+ * via the `definition` "courses".
  */
-export interface Membership {
+export interface Course {
   id: number;
+  /**
+   * Course name (e.g., "Watercolor Fundamentals - 4 Week Course")
+   */
   title: string;
+  /**
+   * URL-friendly identifier
+   */
   slug: string;
   /**
-   * Membership description and benefits
+   * Course description and what students will learn
    */
   description?: string | null;
   /**
-   * Class templates included in this membership
+   * Assigned instructor for this course
    */
-  classTemplates?: (number | ClassTemplate)[] | null;
+  instructor?: (number | null) | Instructor;
   /**
-   * Main image for the membership
+   * Main course image
    */
   featuredImage?: (number | null) | Media;
   /**
-   * Monthly subscription price in cents (e.g., 12000 = €120.00)
+   * Additional course images
    */
-  monthlyPriceCents: number;
-  currency?: string | null;
-  billingCycle: 'monthly' | 'quarterly' | 'annual';
+  gallery?: (number | Media)[] | null;
   /**
-   * Maximum number of active subscriptions
+   * Total price for entire course in cents (e.g., 18000 = €180.00)
    */
-  maxEnrollments: number;
+  priceCents: number;
+  currency: 'eur' | 'usd';
   /**
-   * Tags for filtering (e.g., Kids & Family, Wine, Ceramics)
+   * Maximum participants (applies to ALL course sessions)
+   */
+  maxCapacity: number;
+  /**
+   * Duration of each session in minutes
+   */
+  durationMinutes: number;
+  /**
+   * Venue or location where course takes place
+   */
+  location?: string | null;
+  /**
+   * Category tags for filtering
    */
   tags?: (number | Tag)[] | null;
+  /**
+   * Published courses are visible on the website
+   */
   isPublished?: boolean | null;
-  updatedAt: string;
-  createdAt: string;
-}
-/**
- * Links memberships to specific class sessions available during a period
- *
- * This interface was referenced by `Config`'s JSON-Schema
- * via the `definition` "membership-schedules".
- */
-export interface MembershipSchedule {
-  id: number;
   /**
-   * The membership this schedule belongs to
+   * Configure automatic session generation. Save course first, then fill this section.
    */
-  membership: number | Membership;
+  schedule?: {
+    /**
+     * First session date
+     */
+    startDate?: string | null;
+    /**
+     * Last session date
+     */
+    endDate?: string | null;
+    /**
+     * How often sessions repeat
+     */
+    recurrence?: ('weekly' | 'biweekly' | 'monthly') | null;
+    /**
+     * Days of the week when sessions occur
+     */
+    daysOfWeek?: ('0' | '1' | '2' | '3' | '4' | '5' | '6')[] | null;
+    /**
+     * Session start time in HH:MM format (e.g., "17:00")
+     */
+    startTime?: string | null;
+    /**
+     * Timezone for the schedule
+     */
+    timezone?: string | null;
+  };
   /**
-   * Class sessions that are available to membership subscribers
+   * Sessions for this course
    */
-  classSessions: (number | ClassSession)[];
-  /**
-   * When this schedule period starts
-   */
-  startDate: string;
-  /**
-   * When this schedule period ends
-   */
-  endDate: string;
-  /**
-   * Whether this schedule is currently active
-   */
-  isActive?: boolean | null;
+  sessions?: {
+    docs?: (number | Session)[];
+    hasNextPage?: boolean;
+    totalDocs?: number;
+  };
   updatedAt: string;
   createdAt: string;
 }
@@ -436,6 +449,10 @@ export interface MembershipSchedule {
  */
 export interface Booking {
   id: number;
+  /**
+   * Type of booking: individual class session or full course
+   */
+  bookingType: 'class' | 'course';
   /**
    * User who made the booking (optional for guest bookings)
    */
@@ -457,9 +474,13 @@ export interface Booking {
    */
   phone: string;
   /**
-   * The specific class session being booked
+   * The specific session being booked (for class bookings)
    */
-  classSession: number | ClassSession;
+  session?: (number | null) | Session;
+  /**
+   * The course being enrolled in (for course bookings)
+   */
+  course?: (number | null) | Course;
   /**
    * Number of spots booked
    */
@@ -472,47 +493,15 @@ export interface Booking {
   stripePaymentIntentId?: string | null;
   bookingDate: string;
   /**
+   * Expiration time for pending reservations (auto-cleaned up after this time)
+   */
+  expiresAt?: string | null;
+  /**
    * Whether the user has checked in for the class
    */
   checkedIn?: boolean | null;
   /**
    * Internal notes or special requests
-   */
-  notes?: string | null;
-  updatedAt: string;
-  createdAt: string;
-}
-/**
- * This interface was referenced by `Config`'s JSON-Schema
- * via the `definition` "subscriptions".
- */
-export interface Subscription {
-  id: number;
-  /**
-   * Subscribed user
-   */
-  user: number | User;
-  /**
-   * The membership the user is subscribed to
-   */
-  membership: number | Membership;
-  enrollmentDate: string;
-  status: 'active' | 'paused' | 'cancelled' | 'expired';
-  paymentStatus: 'pending' | 'paid' | 'failed' | 'refunded';
-  /**
-   * Stripe Subscription ID
-   */
-  stripeSubscriptionId?: string | null;
-  /**
-   * Next billing date for subscription
-   */
-  nextBillingDate?: string | null;
-  /**
-   * Date when subscription was cancelled
-   */
-  cancellationDate?: string | null;
-  /**
-   * Internal notes about this subscription
    */
   notes?: string | null;
   updatedAt: string;
@@ -538,32 +527,24 @@ export interface PayloadLockedDocument {
         value: number | Tag;
       } | null)
     | ({
-        relationTo: 'class-templates';
-        value: number | ClassTemplate;
+        relationTo: 'classes';
+        value: number | Class;
+      } | null)
+    | ({
+        relationTo: 'courses';
+        value: number | Course;
       } | null)
     | ({
         relationTo: 'instructors';
         value: number | Instructor;
       } | null)
     | ({
-        relationTo: 'class-sessions';
-        value: number | ClassSession;
-      } | null)
-    | ({
-        relationTo: 'memberships';
-        value: number | Membership;
-      } | null)
-    | ({
-        relationTo: 'membership-schedules';
-        value: number | MembershipSchedule;
+        relationTo: 'sessions';
+        value: number | Session;
       } | null)
     | ({
         relationTo: 'bookings';
         value: number | Booking;
-      } | null)
-    | ({
-        relationTo: 'subscriptions';
-        value: number | Subscription;
       } | null);
   globalSlug?: string | null;
   user: {
@@ -667,9 +648,9 @@ export interface TagsSelect<T extends boolean = true> {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
- * via the `definition` "class-templates_select".
+ * via the `definition` "classes_select".
  */
-export interface ClassTemplatesSelect<T extends boolean = true> {
+export interface ClassesSelect<T extends boolean = true> {
   title?: T;
   slug?: T;
   classType?: T;
@@ -683,19 +664,50 @@ export interface ClassTemplatesSelect<T extends boolean = true> {
   maxCapacity?: T;
   location?: T;
   tags?: T;
-  recurrencePatterns?:
+  isPublished?: T;
+  schedule?:
     | T
     | {
-        frequency?: T;
-        daysOfWeek?: T;
-        startTime?: T;
         startDate?: T;
         endDate?: T;
+        recurrence?: T;
+        daysOfWeek?: T;
+        startTime?: T;
         timezone?: T;
-        isActive?: T;
-        id?: T;
       };
+  sessions?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "courses_select".
+ */
+export interface CoursesSelect<T extends boolean = true> {
+  title?: T;
+  slug?: T;
+  description?: T;
+  instructor?: T;
+  featuredImage?: T;
+  gallery?: T;
+  priceCents?: T;
+  currency?: T;
+  maxCapacity?: T;
+  durationMinutes?: T;
+  location?: T;
+  tags?: T;
   isPublished?: T;
+  schedule?:
+    | T
+    | {
+        startDate?: T;
+        endDate?: T;
+        recurrence?: T;
+        daysOfWeek?: T;
+        startTime?: T;
+        timezone?: T;
+      };
+  sessions?: T;
   updatedAt?: T;
   createdAt?: T;
 }
@@ -717,12 +729,13 @@ export interface InstructorsSelect<T extends boolean = true> {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
- * via the `definition` "class-sessions_select".
+ * via the `definition` "sessions_select".
  */
-export interface ClassSessionsSelect<T extends boolean = true> {
-  classTemplate?: T;
+export interface SessionsSelect<T extends boolean = true> {
+  sessionType?: T;
+  class?: T;
+  course?: T;
   startDateTime?: T;
-  endDateTime?: T;
   timezone?: T;
   status?: T;
   availableSpots?: T;
@@ -732,70 +745,24 @@ export interface ClassSessionsSelect<T extends boolean = true> {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
- * via the `definition` "memberships_select".
- */
-export interface MembershipsSelect<T extends boolean = true> {
-  title?: T;
-  slug?: T;
-  description?: T;
-  classTemplates?: T;
-  featuredImage?: T;
-  monthlyPriceCents?: T;
-  currency?: T;
-  billingCycle?: T;
-  maxEnrollments?: T;
-  tags?: T;
-  isPublished?: T;
-  updatedAt?: T;
-  createdAt?: T;
-}
-/**
- * This interface was referenced by `Config`'s JSON-Schema
- * via the `definition` "membership-schedules_select".
- */
-export interface MembershipSchedulesSelect<T extends boolean = true> {
-  membership?: T;
-  classSessions?: T;
-  startDate?: T;
-  endDate?: T;
-  isActive?: T;
-  updatedAt?: T;
-  createdAt?: T;
-}
-/**
- * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "bookings_select".
  */
 export interface BookingsSelect<T extends boolean = true> {
+  bookingType?: T;
   user?: T;
   firstName?: T;
   lastName?: T;
   email?: T;
   phone?: T;
-  classSession?: T;
+  session?: T;
+  course?: T;
   numberOfPeople?: T;
   status?: T;
   paymentStatus?: T;
   stripePaymentIntentId?: T;
   bookingDate?: T;
+  expiresAt?: T;
   checkedIn?: T;
-  notes?: T;
-  updatedAt?: T;
-  createdAt?: T;
-}
-/**
- * This interface was referenced by `Config`'s JSON-Schema
- * via the `definition` "subscriptions_select".
- */
-export interface SubscriptionsSelect<T extends boolean = true> {
-  user?: T;
-  membership?: T;
-  enrollmentDate?: T;
-  status?: T;
-  paymentStatus?: T;
-  stripeSubscriptionId?: T;
-  nextBillingDate?: T;
-  cancellationDate?: T;
   notes?: T;
   updatedAt?: T;
   createdAt?: T;

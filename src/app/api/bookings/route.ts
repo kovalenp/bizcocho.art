@@ -3,7 +3,7 @@ import config from '@payload-config'
 import { NextRequest, NextResponse } from 'next/server'
 
 type BookingRequestBody = {
-  classSession: string
+  session: string  // Changed from classSession
   firstName: string
   lastName: string
   email: string
@@ -14,10 +14,10 @@ type BookingRequestBody = {
 export async function POST(request: NextRequest) {
   try {
     const body: BookingRequestBody = await request.json()
-    const { classSession, firstName, lastName, email, phone, numberOfPeople } = body
+    const { session: sessionId, firstName, lastName, email, phone, numberOfPeople } = body
 
     // Validate required fields
-    if (!classSession || !firstName || !lastName || !email || !phone || !numberOfPeople) {
+    if (!sessionId || !firstName || !lastName || !email || !phone || !numberOfPeople) {
       return NextResponse.json(
         { error: 'Missing required fields' },
         { status: 400 }
@@ -26,40 +26,47 @@ export async function POST(request: NextRequest) {
 
     const payload = await getPayload({ config })
 
-    // Check if the class session exists
-    const classSessionDoc = await payload.findByID({
-      collection: 'class-sessions',
-      id: classSession,
+    // Check if the session exists
+    const sessionDoc = await payload.findByID({
+      collection: 'sessions',
+      id: sessionId,
       depth: 2,
     })
 
-    if (!classSessionDoc) {
+    if (!sessionDoc) {
       return NextResponse.json(
-        { error: 'Class session not found' },
+        { error: 'Session not found' },
         { status: 404 }
       )
     }
 
     // Check if session is cancelled
-    if (classSessionDoc.status === 'cancelled') {
+    if (sessionDoc.status === 'cancelled') {
       return NextResponse.json(
-        { error: 'This class session has been cancelled' },
+        { error: 'This session has been cancelled' },
         { status: 400 }
       )
     }
 
-    // Get the class template to determine max capacity
-    const classTemplate = typeof classSessionDoc.classTemplate === 'object'
-      ? classSessionDoc.classTemplate
+    // Get the class to determine max capacity
+    if (!sessionDoc.class) {
+      return NextResponse.json(
+        { error: 'Session has no associated class' },
+        { status: 400 }
+      )
+    }
+
+    const classDoc = typeof sessionDoc.class === 'object'
+      ? sessionDoc.class
       : await payload.findByID({
-          collection: 'class-templates',
-          id: typeof classSessionDoc.classTemplate === 'number' ? classSessionDoc.classTemplate : parseInt(classSessionDoc.classTemplate as string, 10),
+          collection: 'classes',
+          id: typeof sessionDoc.class === 'number' ? sessionDoc.class : parseInt(String(sessionDoc.class), 10),
         })
 
-    // Get current available spots (use session's availableSpots if set, otherwise use template's maxCapacity)
-    const currentAvailableSpots = classSessionDoc.availableSpots !== undefined && classSessionDoc.availableSpots !== null
-      ? classSessionDoc.availableSpots
-      : classTemplate.maxCapacity || 0
+    // Get current available spots (use session's availableSpots if set, otherwise use class's maxCapacity)
+    const currentAvailableSpots = sessionDoc.availableSpots !== undefined && sessionDoc.availableSpots !== null
+      ? sessionDoc.availableSpots
+      : classDoc.maxCapacity || 0
 
     // Check if there's enough capacity
     if (numberOfPeople > currentAvailableSpots) {
@@ -73,7 +80,8 @@ export async function POST(request: NextRequest) {
     const booking = await payload.create({
       collection: 'bookings',
       data: {
-        classSession: typeof classSession === 'string' ? parseInt(classSession, 10) : classSession,
+        bookingType: 'class',
+        session: typeof sessionId === 'string' ? parseInt(sessionId, 10) : sessionId,
         firstName,
         lastName,
         email,
@@ -89,8 +97,8 @@ export async function POST(request: NextRequest) {
     const newAvailableSpots = currentAvailableSpots - numberOfPeople
 
     await payload.update({
-      collection: 'class-sessions',
-      id: classSession,
+      collection: 'sessions',
+      id: sessionId,
       data: {
         availableSpots: Math.max(0, newAvailableSpots),
       },
