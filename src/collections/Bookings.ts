@@ -253,26 +253,29 @@ export const Bookings: CollectionConfig = {
           }
 
           // Determine capacity change
+          // NOTE: For course bookings, the checkout API already reserves spots when creating
+          // the pending booking. We only need to handle:
+          // 1. Cancellation (restore spots)
+          // 2. Number of people changes on confirmed bookings
+          // We do NOT decrement on confirmation because checkout API already did that.
           let capacityChange = 0
 
-          if (operation === 'create' && doc.status === 'confirmed') {
-            // New confirmed booking: reduce capacity
-            capacityChange = -numberOfPeople
-          } else if (operation === 'update') {
+          if (operation === 'update') {
             const wasConfirmed = previousDoc?.status === 'confirmed'
+            const wasPending = previousDoc?.status === 'pending'
             const isConfirmed = doc.status === 'confirmed'
+            const isCancelled = doc.status === 'cancelled'
             const previousPeople = previousDoc?.numberOfPeople || 0
 
-            if (!wasConfirmed && isConfirmed) {
-              // Just confirmed: reduce capacity
-              capacityChange = -numberOfPeople
-            } else if (wasConfirmed && !isConfirmed) {
-              // Cancelled/changed from confirmed: restore capacity
+            if ((wasConfirmed || wasPending) && isCancelled) {
+              // Cancelled: restore capacity (spots were reserved at checkout)
               capacityChange = previousPeople
             } else if (wasConfirmed && isConfirmed && numberOfPeople !== previousPeople) {
-              // Changed number of people: adjust
+              // Changed number of people on confirmed booking: adjust
               capacityChange = previousPeople - numberOfPeople
             }
+            // Note: pending → confirmed does NOT change capacity because
+            // the checkout API already reserved the spots
           }
 
           // Update all course sessions

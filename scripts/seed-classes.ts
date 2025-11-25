@@ -14,17 +14,7 @@ process.env.PAYLOAD_DROP_DATABASE = 'true'
 async function seed() {
   console.log('🌱 Starting comprehensive database seed...')
 
-  // Clean up old media files
-  console.log('\n🗑️  Cleaning old media files...')
   const mediaDir = path.resolve(__dirname, '../media')
-  if (fs.existsSync(mediaDir)) {
-    const files = fs.readdirSync(mediaDir)
-    const imageFiles = files.filter((file) => /\.(jpg|jpeg|png|gif|webp)$/i.test(file))
-    for (const file of imageFiles) {
-      fs.unlinkSync(path.join(mediaDir, file))
-    }
-    console.log(`✅ Removed ${imageFiles.length} old media file(s)`)
-  }
 
   // Dynamically import config after env vars are loaded
   const { getPayload } = await import('payload')
@@ -65,16 +55,7 @@ async function seed() {
     // ======================
     console.log('\n📋 Step 2: Creating sample media...')
 
-    // Helper function to fetch image from URL
-    async function fetchImageFromUrl(url: string): Promise<Buffer> {
-      const response = await fetch(url)
-      if (!response.ok) {
-        throw new Error(`Failed to fetch image from ${url}: ${response.statusText}`)
-      }
-      const arrayBuffer = await response.arrayBuffer()
-      return Buffer.from(arrayBuffer)
-    }
-
+    // Media file definitions
     const mediaFiles = [
       {
         filename: 'ceramic-pot.jpg',
@@ -100,7 +81,6 @@ async function seed() {
         alt: { en: 'Glazing techniques class', es: 'Clase de técnicas de esmaltado' },
         title: 'Glazing Class',
       },
-      // Gallery images
       {
         filename: 'gallery-1.jpg',
         url: 'https://picsum.photos/800/600?random=5',
@@ -121,50 +101,144 @@ async function seed() {
       },
       {
         filename: 'instructor-elena.jpg',
-        url: 'https://avatar.iran.liara.run/public/girl',
+        url: 'https://i.pravatar.cc/300?img=5', // Woman avatar
         alt: { en: 'Elena Martínez photo', es: 'Foto de Elena Martínez' },
         title: 'Elena Martínez',
       },
       {
         filename: 'instructor-pablo.jpg',
-        url: 'https://avatar.iran.liara.run/public/boy',
+        url: 'https://i.pravatar.cc/300?img=12', // Man avatar
         alt: { en: 'Pablo Sánchez photo', es: 'Foto de Pablo Sánchez' },
         title: 'Pablo Sánchez',
       },
     ]
 
+    // Check if media directory has existing images
+    let existingImages: string[] = []
+    if (fs.existsSync(mediaDir)) {
+      existingImages = fs.readdirSync(mediaDir).filter((file) => /\.(jpg|jpeg|png|gif|webp)$/i.test(file))
+    } else {
+      fs.mkdirSync(mediaDir, { recursive: true })
+    }
+
+    const shouldDownloadImages = existingImages.length === 0
+
+    // Helper function to fetch image from URL
+    async function fetchImageFromUrl(url: string): Promise<Buffer> {
+      const response = await fetch(url)
+      if (!response.ok) {
+        throw new Error(`Failed to fetch image from ${url}: ${response.statusText}`)
+      }
+      const arrayBuffer = await response.arrayBuffer()
+      return Buffer.from(arrayBuffer)
+    }
+
     const createdMedia: any[] = []
 
-    for (const { filename, url, alt, title } of mediaFiles) {
-      try {
-        console.log(`📥 Fetching image: ${title}...`)
-        const imageBuffer = await fetchImageFromUrl(url)
+    if (shouldDownloadImages) {
+      console.log('📥 Media directory empty, downloading images...')
 
-        const media = await payload.create({
-          collection: 'media',
-          data: { alt: alt.en },
-          file: {
-            data: imageBuffer,
-            mimetype: 'image/jpeg',
-            name: filename,
-            size: imageBuffer.length,
-          },
-          locale: 'en',
-        })
+      for (const { filename, url, alt, title } of mediaFiles) {
+        try {
+          console.log(`  📥 Fetching: ${title}...`)
+          const imageBuffer = await fetchImageFromUrl(url)
 
-        await payload.update({
-          collection: 'media',
-          id: media.id,
-          data: { alt: alt.es },
-          locale: 'es',
-        })
+          const media = await payload.create({
+            collection: 'media',
+            data: { alt: alt.en },
+            file: {
+              data: imageBuffer,
+              mimetype: 'image/jpeg',
+              name: filename,
+              size: imageBuffer.length,
+            },
+            locale: 'en',
+          })
 
-        createdMedia.push(media)
-        console.log(`✅ Created media: ${title}`)
-      } catch (error) {
-        console.error(`❌ Failed to create media ${title}:`, error)
+          await payload.update({
+            collection: 'media',
+            id: media.id,
+            data: { alt: alt.es },
+            locale: 'es',
+          })
+
+          createdMedia.push(media)
+          console.log(`  ✅ Created: ${title}`)
+        } catch (error) {
+          console.error(`  ❌ Failed to create ${title}:`, error)
+        }
+      }
+    } else {
+      console.log(`📁 Found ${existingImages.length} existing images, reusing them...`)
+
+      for (const { filename, alt, title } of mediaFiles) {
+        try {
+          // Find existing file by name pattern (e.g., "ceramic-pot" in "ceramic-pot-abc123.jpg")
+          const baseFilename = filename.replace('.jpg', '')
+          const existingFile = existingImages.find((f) => f.includes(baseFilename))
+
+          if (existingFile) {
+            const filePath = path.join(mediaDir, existingFile)
+            const imageBuffer = fs.readFileSync(filePath)
+
+            const media = await payload.create({
+              collection: 'media',
+              data: { alt: alt.en },
+              file: {
+                data: imageBuffer,
+                mimetype: 'image/jpeg',
+                name: existingFile,
+                size: imageBuffer.length,
+              },
+              locale: 'en',
+            })
+
+            await payload.update({
+              collection: 'media',
+              id: media.id,
+              data: { alt: alt.es },
+              locale: 'es',
+            })
+
+            createdMedia.push(media)
+            console.log(`  ✅ Reused: ${title} (${existingFile})`)
+          } else {
+            // File doesn't exist locally, download it
+            console.log(`  📥 Downloading missing: ${title}...`)
+            const fileConfig = mediaFiles.find((m) => m.filename === filename)
+            if (fileConfig) {
+              const imageBuffer = await fetchImageFromUrl(fileConfig.url)
+
+              const media = await payload.create({
+                collection: 'media',
+                data: { alt: alt.en },
+                file: {
+                  data: imageBuffer,
+                  mimetype: 'image/jpeg',
+                  name: filename,
+                  size: imageBuffer.length,
+                },
+                locale: 'en',
+              })
+
+              await payload.update({
+                collection: 'media',
+                id: media.id,
+                data: { alt: alt.es },
+                locale: 'es',
+              })
+
+              createdMedia.push(media)
+              console.log(`  ✅ Downloaded: ${title}`)
+            }
+          }
+        } catch (error) {
+          console.error(`  ❌ Failed to create ${title}:`, error)
+        }
       }
     }
+
+    console.log(`✅ Created ${createdMedia.length} media files`)
 
     // ======================
     // 3. CREATE TAGS
