@@ -1,11 +1,11 @@
 services:
   db:
     image: postgres:16
-    container_name: bozchocho-postgres
+    container_name: bizcocho-postgres
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: bozchocho
+      POSTGRES_DB: bizcocho
     ports:
       - "5432:5432"
     volumes:

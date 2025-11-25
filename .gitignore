@@ -11,20 +11,17 @@ node_modules/
 .env.production.local
 .env.*.local
 
-# Build outputs - Astro
-apps/web/dist/
-apps/web/.astro/
-
 # Build outputs - Next.js/Payload CMS
-apps/cms/.next/
-apps/cms/out/
-apps/cms/build/
+.next/
+out/
+build/
+dist/
 
-# Turborepo cache
+# Turborepo cache (legacy)
 .turbo/
 
 # Payload CMS generated files
-apps/cms/src/payload-types.ts
+src/payload-types.ts
 
 # Database & Docker volumes
 postgres-data/

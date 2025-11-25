@@ -2,18 +2,18 @@
 
 This repository hosts bizcocho.art - an art class booking platform with Next.js 15 + Payload CMS 3. Follow these practices to keep changes consistent and deploy-ready.
 
-**Note for AI assistants (Claude Code, etc.):** This file contains comprehensive development guidelines for this repository. Key information for quick productivity is also available in CLAUDE.md.
+**Note for AI assistants:** This file contains comprehensive development guidelines for this repository.
 
 ## Project Structure
 
-- `apps/web` — Next.js 15 SSR app with Payload CMS integrated
-  - Frontend pages in `src/app/(app)/[locale]` with i18n support
+- `src/` — Next.js 15 SSR app with Payload CMS integrated
+  - Frontend pages in `app/(app)/[locale]` with i18n support
   - Payload CMS admin at `/admin` route
-  - API routes in `src/app/api`
-  - Collections in `src/collections`
+  - API routes in `app/api`
+  - Collections in `collections/`
   - Tailwind CSS v4 for styling
 - `infra/docker/docker-compose.yml` — Postgres + MailPit for local development
-- Root tooling: pnpm workspaces + Turbo for monorepo management
+- Package manager: pnpm (standard, no workspaces)
 
 ## Tech Stack
 
@@ -22,19 +22,18 @@ This repository hosts bizcocho.art - an art class booking platform with Next.js 
 - **Database**: PostgreSQL (via @payloadcms/db-postgres)
 - **Styling**: Tailwind CSS v4
 - **i18n**: Custom implementation with English/Spanish support
-- **Payment**: Stripe (future integration)
+- **Payment**: Stripe integration with webhooks
 - **Node Version**: 22+
 
 ## Build, Test & Development Commands
 
 ```bash
-pnpm install                      # install workspace deps (Node 22+)
-pnpm --filter @bizcocho/web dev   # run Next.js dev server (port 4321)
-pnpm --filter @bizcocho/web build # build for production
-pnpm --filter @bizcocho/web seed  # seed database with sample data
-pnpm --filter @bizcocho/web generate:types # generate Payload types
-pnpm build                        # build all packages
-pnpm lint | pnpm format           # linting and formatting
+pnpm install                # install dependencies (Node 22+)
+pnpm dev                    # run Next.js dev server (port 4321)
+pnpm build                  # build for production
+pnpm seed                   # seed database with sample data
+pnpm generate:types         # generate Payload types
+pnpm lint | pnpm format     # linting and formatting
 ```
 
 Launch Postgres + MailPit via `docker compose -f infra/docker/docker-compose.yml up -d` before starting development.

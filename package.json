@@ -1,24 +1,72 @@
 {
   "name": "bizcocho-art",
+  "version": "1.0.0",
+  "description": "bizcocho.art - Art class booking platform",
+  "license": "MIT",
   "private": true,
+  "type": "module",
   "packageManager": "pnpm@9.12.2",
-  "workspaces": [
-    "apps/*",
-    "packages/*"
-  ],
   "scripts": {
-    "build": "turbo run build",
-    "dev": "turbo run dev --parallel",
-    "lint": "turbo run lint",
-    "format": "turbo run format",
-    "clean": "turbo run clean"
+    "build": "cross-env NODE_OPTIONS=\"--no-deprecation --max-old-space-size=8000\" next build",
+    "dev": "cross-env NODE_OPTIONS=--no-deprecation next dev -p 4321",
+    "devsafe": "rm -rf .next && cross-env NODE_OPTIONS=--no-deprecation next dev -p 4321",
+    "generate:importmap": "cross-env NODE_OPTIONS=--no-deprecation payload generate:importmap",
+    "generate:types": "cross-env NODE_OPTIONS=--no-deprecation payload generate:types",
+    "lint": "cross-env NODE_OPTIONS=--no-deprecation next lint",
+    "lint:fix": "cross-env NODE_OPTIONS=--no-deprecation next lint --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "payload": "cross-env NODE_OPTIONS=--no-deprecation payload",
+    "seed": "cross-env NODE_OPTIONS=--no-deprecation tsx scripts/seed-classes.ts",
+    "start": "cross-env NODE_OPTIONS=--no-deprecation next start -p 4321",
+    "test": "pnpm run test:int && pnpm run test:e2e",
+    "test:e2e": "cross-env NODE_OPTIONS=\"--no-deprecation --no-experimental-strip-types\" pnpm exec playwright test",
+    "test:int": "cross-env NODE_OPTIONS=--no-deprecation vitest run --config ./vitest.config.mts",
+    "clean": "rm -rf .next"
+  },
+  "dependencies": {
+    "@payloadcms/db-postgres": "3.61.1",
+    "@payloadcms/next": "3.61.1",
+    "@payloadcms/payload-cloud": "3.61.1",
+    "@payloadcms/richtext-lexical": "3.61.1",
+    "@payloadcms/ui": "3.61.1",
+    "@types/nodemailer": "^7.0.4",
+    "cross-env": "^7.0.3",
+    "dotenv": "16.4.7",
+    "graphql": "^16.8.1",
+    "next": "15.4.4",
+    "nodemailer": "^7.0.10",
+    "payload": "3.61.1",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "sharp": "0.34.2",
+    "stripe": "^20.0.0"
   },
   "devDependencies": {
-    "turbo": "^2.5.6",
-    "typescript": "^5.9.3"
+    "@playwright/test": "1.54.1",
+    "@tailwindcss/postcss": "^4.1.17",
+    "@testing-library/react": "16.3.0",
+    "@types/node": "^22.5.4",
+    "@types/react": "19.1.8",
+    "@types/react-dom": "19.1.6",
+    "@vitejs/plugin-react": "4.5.2",
+    "autoprefixer": "^10.4.22",
+    "eslint": "^9.16.0",
+    "eslint-config-next": "15.4.4",
+    "jsdom": "26.1.0",
+    "playwright": "1.54.1",
+    "playwright-core": "1.54.1",
+    "postcss": "^8.5.6",
+    "prettier": "^3.6.2",
+    "tailwindcss": "^4.1.17",
+    "tsx": "^4.20.6",
+    "typescript": "5.7.3",
+    "vite-tsconfig-paths": "5.1.4",
+    "vitest": "3.2.3"
   },
   "engines": {
-    "node": ">=22.0.0 <25"
+    "node": ">=22.0.0 <25",
+    "pnpm": "^9 || ^10"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
