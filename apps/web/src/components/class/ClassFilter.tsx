@@ -84,59 +84,51 @@ function ClassCard({ data, messages, locale }: { data: ClassTemplate; messages: 
   return (
     <Link
       href={`/${locale}/classes/${data.slug}`}
-      className="group block no-underline border border-gray-200 rounded-lg overflow-hidden shadow-sm hover:shadow-xl hover:scale-[1.02] hover:border-primary hover:bg-gray-50 transition-all duration-300 ease-in-out"
+      className="group block no-underline bg-gray-50 rounded-lg overflow-hidden hover:bg-primary transition-all duration-300 ease-in-out"
     >
       {featuredImage?.url && (
-        <div className="overflow-hidden h-48">
-          <img
-            src={featuredImage.url}
-            alt={data.title}
-            className="w-full h-full object-cover transition-transform duration-300 ease-in-out group-hover:scale-110"
-          />
+        <div className="p-3 pb-0">
+          <div className="overflow-hidden h-64 rounded-xl relative">
+            <img
+              src={featuredImage.url}
+              alt={data.title}
+              className="w-full h-full object-cover transition-transform duration-500 ease-out group-hover:scale-110"
+            />
+          </div>
         </div>
       )}
       <div className="p-6">
-        <h3 className="mb-4 text-xl font-medium text-gray-800">
+        {/* Header Row: Slots, Price, Tag */}
+        <div className="flex justify-between items-center mb-3">
+          <div className="flex items-center gap-3">
+            {/* Available Slots - Black Pill */}
+            <span className="bg-black text-white px-3 py-1 rounded-full text-xs font-medium">
+              {data.maxCapacity || 0} {messages.home.spots}
+            </span>
+            
+            {/* Price */}
+            <span className="text-lg font-medium text-gray-900 group-hover:text-white transition-colors duration-300">
+              €{((data.priceCents || 0) / 100).toFixed(2)}
+            </span>
+          </div>
+
+          {/* Tag - Outlined Pill */}
+          {classTags.length > 0 && (
+            <span className="border border-gray-300 text-gray-600 px-3 py-1 rounded-full text-xs font-medium bg-white">
+              {typeof classTags[0] === 'string' ? classTags[0] : classTags[0].name}
+            </span>
+          )}
+        </div>
+
+        <h3 className="mb-2 text-xl font-medium text-gray-900 group-hover:text-white transition-colors duration-300">
           {data.title}
         </h3>
+        
         {data.description && (
-          <p className="mb-4 text-gray-600 leading-relaxed">
+          <p className="text-gray-600 leading-relaxed text-sm line-clamp-3 group-hover:text-white/90 transition-colors duration-300">
             {data.description}
           </p>
         )}
-
-        {/* Tags */}
-        {classTags.length > 0 && (
-          <div className="flex gap-2 flex-wrap mb-4">
-            {classTags.map((tag) => (
-              <span
-                key={typeof tag === 'string' ? tag : tag.id}
-                className="px-3 py-1 rounded-xl text-xs font-medium text-white"
-                style={{
-                  backgroundColor: typeof tag === 'string' ? '#f0f0f0' : tag.color || '#f0f0f0',
-                  color: typeof tag === 'string' ? '#333' : '#fff',
-                }}
-              >
-                {typeof tag === 'string' ? tag : tag.name}
-              </span>
-            ))}
-          </div>
-        )}
-
-        <div className="flex justify-between items-center mb-4">
-          <span className="text-2xl font-bold text-primary">
-            €{((data.priceCents || 0) / 100).toFixed(2)}
-          </span>
-          <span className="bg-gray-100 px-2 py-1 rounded text-sm">
-            {data.maxCapacity || 0} {messages.home.spots}
-          </span>
-        </div>
-        <div className="flex gap-2 flex-wrap text-sm text-gray-500">
-          <span>
-            ⏱️ {data.durationMinutes || 0} {messages.home.min}
-          </span>
-          {data.location && <span>📍 {data.location}</span>}
-        </div>
       </div>
     </Link>
   )

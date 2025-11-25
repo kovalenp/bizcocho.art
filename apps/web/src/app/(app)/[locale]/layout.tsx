@@ -18,7 +18,7 @@ export default async function LocaleLayout({ children, params }: Props) {
   const messages = getMessages(locale)
 
   return (
-    <div lang={locale} className="min-h-screen bg-gray-50">
+    <div lang={locale} className="min-h-screen bg-white">
       <Navigation currentLocale={locale} messages={messages} />
       <main>{children}</main>
     </div>
