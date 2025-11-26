@@ -1,10 +1,11 @@
 import type { CollectionConfig } from 'payload'
+import { logInfo, logWarn } from '../lib/logger'
 
 export const Classes: CollectionConfig = {
   slug: 'classes',
   admin: {
     useAsTitle: 'title',
-    defaultColumns: ['title', 'classType', 'instructor', 'priceCents', 'isPublished'],
+    defaultColumns: ['title', 'type', 'instructor', 'priceCents', 'isPublished'],
   },
   fields: [
     {
@@ -21,16 +22,16 @@ export const Classes: CollectionConfig = {
       localized: true,
     },
     {
-      name: 'classType',
+      name: 'type',
       type: 'select',
       required: true,
-      defaultValue: 'one-time',
+      defaultValue: 'class',
       options: [
-        { label: 'One-Time Event', value: 'one-time' },
-        { label: 'Recurring Class', value: 'recurring' },
+        { label: 'Class', value: 'class' },
+        { label: 'Course', value: 'course' },
       ],
       admin: {
-        description: 'One-time: Create sessions manually. Recurring: Auto-generate sessions from schedule.',
+        description: 'Class: book individual sessions. Course: book enrollment (all sessions).',
       },
     },
     {
@@ -114,13 +115,13 @@ export const Classes: CollectionConfig = {
         position: 'sidebar',
       },
     },
-    // ========== SCHEDULE SECTION (only for recurring, after save) ==========
+    // ========== SCHEDULE SECTION (visible after save) ==========
     {
       name: 'schedule',
       type: 'group',
       admin: {
-        description: 'Configure automatic session generation for recurring classes.',
-        condition: (data) => !!data?.id && data?.classType === 'recurring',
+        description: 'Configure automatic session generation.',
+        condition: (data) => !!data?.id,
       },
       fields: [
         {
@@ -196,13 +197,8 @@ export const Classes: CollectionConfig = {
         const { payload } = req
         const classDoc = doc
 
-        // Skip on create
+        // Skip on create - user needs to save first, then configure schedule
         if (operation === 'create') {
-          return doc
-        }
-
-        // Only generate sessions for recurring classes
-        if (classDoc.classType !== 'recurring') {
           return doc
         }
 
@@ -222,13 +218,13 @@ export const Classes: CollectionConfig = {
           previousDoc.schedule.timezone !== schedule.timezone ||
           previousDoc.durationMinutes !== classDoc.durationMinutes ||
           previousDoc.maxCapacity !== classDoc.maxCapacity ||
-          previousDoc.classType !== classDoc.classType
+          previousDoc.type !== classDoc.type
 
         if (!scheduleChanged) {
           return doc
         }
 
-        console.log(`Schedule changed, regenerating sessions for class: ${classDoc.title}`)
+        logInfo('Schedule changed, regenerating sessions', { classId: doc.id, title: classDoc.title, type: classDoc.type })
 
         // Default end date to 3 months from start if not specified
         const start = new Date(schedule.startDate)
@@ -278,7 +274,7 @@ export const Classes: CollectionConfig = {
         }
 
         if (sessionDates.length === 0) {
-          console.log('No session dates generated - check schedule configuration')
+          logWarn('No session dates generated - check schedule configuration', { classId: doc.id })
           return doc
         }
 
@@ -300,7 +296,7 @@ export const Classes: CollectionConfig = {
           await payload.create({
             collection: 'sessions',
             data: {
-              sessionType: 'class',
+              sessionType: classDoc.type, // 'class' or 'course' - mirrors parent
               class: classDoc.id,
               startDateTime: startDateTime.toISOString(),
               timezone: schedule.timezone || 'Europe/Madrid',
@@ -310,7 +306,7 @@ export const Classes: CollectionConfig = {
             req,
           })
         }
-        console.log(`Generated ${sessionDates.length} sessions for class: ${classDoc.title}`)
+        logInfo('Generated sessions', { classId: doc.id, title: classDoc.title, type: classDoc.type, sessionCount: sessionDates.length })
 
         return doc
       },
@@ -319,17 +315,20 @@ export const Classes: CollectionConfig = {
       async ({ req, id }) => {
         const { payload } = req
 
-        // Check for bookings
+        // Get all session IDs for this class
         const sessions = await payload.find({
           collection: 'sessions',
           where: { class: { equals: id } },
-          limit: 100,
+          limit: 1000,
         })
 
-        for (const session of sessions.docs) {
+        if (sessions.docs.length > 0) {
+          const sessionIds = sessions.docs.map((s) => s.id)
+
+          // Check for any bookings referencing these sessions
           const bookings = await payload.find({
             collection: 'bookings',
-            where: { session: { equals: session.id } },
+            where: { sessions: { in: sessionIds } },
             limit: 1,
           })
 

@@ -56,7 +56,8 @@ export function BookingWidget({
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          session: data.sessionId,
+          classId: classTemplate.id.toString(),
+          sessionId: data.sessionId,
           firstName: data.firstName,
           lastName: data.lastName,
           email: data.email,

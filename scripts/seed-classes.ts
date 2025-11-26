@@ -350,15 +350,15 @@ async function seed() {
       return date
     }
 
-    // --- CLASS 1: One-time - "Mug Madness" ---
-    console.log('\n  Creating Class 1: Mug Madness (one-time)...')
+    // --- CLASS 1: "Mug Madness" (type: 'class') ---
+    console.log('\n  Creating Class 1: Mug Madness...')
     const mugClass = await payload.create({
       collection: 'classes',
       data: {
         title: 'Mug Madness',
         slug: 'mug-madness',
         description: 'Create your own unique coffee mug from scratch! Learn hand-building techniques to craft a mug that reflects your personality. Glazing included in a follow-up firing.',
-        classType: 'one-time',
+        type: 'class',
         instructor: createdInstructors[1].id,
         featuredImage: createdMedia[2]?.id,
         gallery: [createdMedia[4]?.id, createdMedia[5]?.id].filter(Boolean),
@@ -407,15 +407,15 @@ async function seed() {
     }
     console.log(`  📅 Created 2 sessions for Mug Madness`)
 
-    // --- CLASS 2: One-time - "Tiny Treasures" (Kids) ---
-    console.log('\n  Creating Class 2: Tiny Treasures (one-time, kids)...')
+    // --- CLASS 2: "Tiny Treasures" (type: 'class', kids) ---
+    console.log('\n  Creating Class 2: Tiny Treasures (kids)...')
     const kidsClass = await payload.create({
       collection: 'classes',
       data: {
         title: 'Tiny Treasures - Kids Clay Workshop',
         slug: 'tiny-treasures-kids',
         description: 'A fun introduction to clay for children ages 6-12! Kids will create small animals, beads, and decorations while learning basic hand-building skills. Parent supervision welcome.',
-        classType: 'one-time',
+        type: 'class',
         instructor: createdInstructors[0].id,
         featuredImage: createdMedia[2]?.id,
         gallery: [createdMedia[5]?.id, createdMedia[6]?.id].filter(Boolean),
@@ -466,8 +466,8 @@ async function seed() {
     }
     console.log(`  📅 Created 3 sessions for Tiny Treasures`)
 
-    // --- CLASS 3: Recurring - "Wheel Therapy Tuesdays" ---
-    console.log('\n  Creating Class 3: Wheel Therapy Tuesdays (recurring)...')
+    // --- CLASS 3: "Wheel Therapy Tuesdays" (type: 'class', recurring schedule) ---
+    console.log('\n  Creating Class 3: Wheel Therapy Tuesdays (recurring schedule)...')
 
     // Calculate recurrence dates
     const tuesdayStart = getNextWeekday(2, 1) // Next Tuesday
@@ -475,14 +475,14 @@ async function seed() {
     const tuesdayEnd = new Date(tuesdayStart)
     tuesdayEnd.setMonth(tuesdayEnd.getMonth() + 3) // 3 months of sessions
 
-    // Create recurring class first (schedule only works after save)
+    // Create class first (schedule only works after save)
     const wheelClass = await payload.create({
       collection: 'classes',
       data: {
         title: 'Wheel Therapy Tuesdays',
         slug: 'wheel-therapy-tuesdays',
         description: 'Unwind after work with the meditative art of wheel throwing. Each session focuses on centering, pulling, and shaping clay. All levels welcome - beginners will start with cylinders, experienced throwers can work on personal projects.',
-        classType: 'recurring',
+        type: 'class',
         instructor: createdInstructors[0].id,
         featuredImage: createdMedia[1]?.id,
         gallery: [createdMedia[4]?.id, createdMedia[6]?.id].filter(Boolean),
@@ -562,7 +562,7 @@ async function seed() {
     }
 
     // ======================
-    // 6. CREATE COURSE
+    // 6. CREATE COURSE (type: 'course' in classes collection)
     // ======================
     console.log('\n📋 Step 6: Creating course...')
 
@@ -572,13 +572,14 @@ async function seed() {
     const mondayEnd = new Date(mondayStart)
     mondayEnd.setDate(mondayEnd.getDate() + 28) // 4 weeks (5 Mondays typically)
 
-    // Create course first (schedule only triggers on update)
+    // Create course (now in classes collection with type: 'course')
     const potCourse = await payload.create({
-      collection: 'courses',
+      collection: 'classes',
       data: {
         title: 'Paint Your Own Pot on Mondays',
         slug: 'paint-your-own-pot-mondays',
         description: 'A 4-week journey into the colorful world of ceramic glazing! Each Monday, you\'ll learn different techniques: underglaze painting, majolica, wax resist, and layering. By the end, you\'ll have 4 beautifully decorated pieces ready for the kiln.',
+        type: 'course', // Course type - enrollment books ALL sessions
         instructor: createdInstructors[1].id,
         featuredImage: createdMedia[0]?.id,
         gallery: [createdMedia[4]?.id, createdMedia[5]?.id, createdMedia[6]?.id].filter(Boolean),
@@ -595,7 +596,7 @@ async function seed() {
 
     // Update with schedule to trigger session generation
     await payload.update({
-      collection: 'courses',
+      collection: 'classes',
       id: potCourse.id,
       data: {
         schedule: {
@@ -611,7 +612,7 @@ async function seed() {
 
     // Spanish translation
     await payload.update({
-      collection: 'courses',
+      collection: 'classes',
       id: potCourse.id,
       data: {
         title: 'Pinta Tu Propia Maceta los Lunes',
@@ -625,7 +626,7 @@ async function seed() {
     // Check if sessions were auto-generated
     const courseSessions = await payload.find({
       collection: 'sessions',
-      where: { course: { equals: potCourse.id } },
+      where: { class: { equals: potCourse.id } },
       limit: 100,
     })
 
@@ -642,7 +643,7 @@ async function seed() {
             collection: 'sessions',
             data: {
               sessionType: 'course',
-              course: potCourse.id,
+              class: potCourse.id,
               startDateTime: sessionStart.toISOString(),
               timezone: 'Europe/Madrid',
               status: 'scheduled',
@@ -667,12 +668,11 @@ async function seed() {
     console.log(`  ✓ ${createdMedia.length} Media files`)
     console.log(`  ✓ ${createdTags.length} Tags`)
     console.log(`  ✓ ${createdInstructors.length} Instructors`)
-    console.log(`  ✓ 3 Classes:`)
-    console.log(`      - Mug Madness (one-time, Saturdays)`)
-    console.log(`      - Tiny Treasures (one-time, Sundays, kids)`)
-    console.log(`      - Wheel Therapy Tuesdays (recurring, every Tuesday)`)
-    console.log(`  ✓ 1 Course:`)
-    console.log(`      - Paint Your Own Pot on Mondays (4 weeks)`)
+    console.log(`  ✓ 4 Classes (3 type:class, 1 type:course):`)
+    console.log(`      - Mug Madness (type:class, Saturdays)`)
+    console.log(`      - Tiny Treasures (type:class, Sundays, kids)`)
+    console.log(`      - Wheel Therapy Tuesdays (type:class, recurring Tuesdays)`)
+    console.log(`      - Paint Your Own Pot on Mondays (type:course, 4 week enrollment)`)
 
     console.log('\nYou can now:')
     console.log('  1. Run: pnpm dev')

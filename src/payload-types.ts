@@ -71,7 +71,6 @@ export interface Config {
     media: Media;
     tags: Tag;
     classes: Class;
-    courses: Course;
     instructors: Instructor;
     sessions: Session;
     bookings: Booking;
@@ -83,16 +82,12 @@ export interface Config {
     classes: {
       sessions: 'sessions';
     };
-    courses: {
-      sessions: 'sessions';
-    };
   };
   collectionsSelect: {
     users: UsersSelect<false> | UsersSelect<true>;
     media: MediaSelect<false> | MediaSelect<true>;
     tags: TagsSelect<false> | TagsSelect<true>;
     classes: ClassesSelect<false> | ClassesSelect<true>;
-    courses: CoursesSelect<false> | CoursesSelect<true>;
     instructors: InstructorsSelect<false> | InstructorsSelect<true>;
     sessions: SessionsSelect<false> | SessionsSelect<true>;
     bookings: BookingsSelect<false> | BookingsSelect<true>;
@@ -224,9 +219,9 @@ export interface Class {
   title: string;
   slug: string;
   /**
-   * One-time: Create sessions manually. Recurring: Auto-generate sessions from schedule.
+   * Class: book individual sessions. Course: book enrollment (all sessions).
    */
-  classType: 'one-time' | 'recurring';
+  type: 'class' | 'course';
   description?: string | null;
   instructor?: (number | null) | Instructor;
   featuredImage?: (number | null) | Media;
@@ -248,7 +243,7 @@ export interface Class {
   tags?: (number | Tag)[] | null;
   isPublished?: boolean | null;
   /**
-   * Configure automatic session generation for recurring classes.
+   * Configure automatic session generation.
    */
   schedule?: {
     /**
@@ -317,17 +312,13 @@ export interface Instructor {
 export interface Session {
   id: number;
   /**
-   * Auto-set based on class/course relationship
+   * Mirrors the parent class type
    */
   sessionType: 'class' | 'course';
   /**
-   * The class this session belongs to
+   * The class/course this session belongs to
    */
-  class?: (number | null) | Class;
-  /**
-   * The course this session belongs to
-   */
-  course?: (number | null) | Course;
+  class: number | Class;
   /**
    * Session start date and time
    */
@@ -338,7 +329,7 @@ export interface Session {
   timezone?: string | null;
   status: 'scheduled' | 'cancelled' | 'completed';
   /**
-   * Auto-initialized from class/course maxCapacity, updated by bookings
+   * Auto-initialized from class maxCapacity, updated by bookings
    */
   availableSpots?: number | null;
   /**
@@ -350,107 +341,12 @@ export interface Session {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
- * via the `definition` "courses".
- */
-export interface Course {
-  id: number;
-  /**
-   * Course name (e.g., "Watercolor Fundamentals - 4 Week Course")
-   */
-  title: string;
-  /**
-   * URL-friendly identifier
-   */
-  slug: string;
-  /**
-   * Course description and what students will learn
-   */
-  description?: string | null;
-  /**
-   * Assigned instructor for this course
-   */
-  instructor?: (number | null) | Instructor;
-  /**
-   * Main course image
-   */
-  featuredImage?: (number | null) | Media;
-  /**
-   * Additional course images
-   */
-  gallery?: (number | Media)[] | null;
-  /**
-   * Total price for entire course in cents (e.g., 18000 = €180.00)
-   */
-  priceCents: number;
-  currency: 'eur' | 'usd';
-  /**
-   * Maximum participants (applies to ALL course sessions)
-   */
-  maxCapacity: number;
-  /**
-   * Duration of each session in minutes
-   */
-  durationMinutes: number;
-  /**
-   * Venue or location where course takes place
-   */
-  location?: string | null;
-  /**
-   * Category tags for filtering
-   */
-  tags?: (number | Tag)[] | null;
-  /**
-   * Published courses are visible on the website
-   */
-  isPublished?: boolean | null;
-  /**
-   * Configure automatic session generation. Save course first, then fill this section.
-   */
-  schedule?: {
-    /**
-     * First session date
-     */
-    startDate?: string | null;
-    /**
-     * Last session date
-     */
-    endDate?: string | null;
-    /**
-     * How often sessions repeat
-     */
-    recurrence?: ('weekly' | 'biweekly' | 'monthly') | null;
-    /**
-     * Days of the week when sessions occur
-     */
-    daysOfWeek?: ('0' | '1' | '2' | '3' | '4' | '5' | '6')[] | null;
-    /**
-     * Session start time in HH:MM format (e.g., "17:00")
-     */
-    startTime?: string | null;
-    /**
-     * Timezone for the schedule
-     */
-    timezone?: string | null;
-  };
-  /**
-   * Sessions for this course
-   */
-  sessions?: {
-    docs?: (number | Session)[];
-    hasNextPage?: boolean;
-    totalDocs?: number;
-  };
-  updatedAt: string;
-  createdAt: string;
-}
-/**
- * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "bookings".
  */
 export interface Booking {
   id: number;
   /**
-   * Type of booking: individual class session or full course
+   * Type of booking: individual class session or full course enrollment
    */
   bookingType: 'class' | 'course';
   /**
@@ -474,13 +370,9 @@ export interface Booking {
    */
   phone: string;
   /**
-   * The specific session being booked (for class bookings)
+   * Sessions included in this booking (1 for class, multiple for course)
    */
-  session?: (number | null) | Session;
-  /**
-   * The course being enrolled in (for course bookings)
-   */
-  course?: (number | null) | Course;
+  sessions: (number | Session)[];
   /**
    * Number of spots booked
    */
@@ -529,10 +421,6 @@ export interface PayloadLockedDocument {
     | ({
         relationTo: 'classes';
         value: number | Class;
-      } | null)
-    | ({
-        relationTo: 'courses';
-        value: number | Course;
       } | null)
     | ({
         relationTo: 'instructors';
@@ -653,7 +541,7 @@ export interface TagsSelect<T extends boolean = true> {
 export interface ClassesSelect<T extends boolean = true> {
   title?: T;
   slug?: T;
-  classType?: T;
+  type?: T;
   description?: T;
   instructor?: T;
   featuredImage?: T;
@@ -662,38 +550,6 @@ export interface ClassesSelect<T extends boolean = true> {
   currency?: T;
   durationMinutes?: T;
   maxCapacity?: T;
-  location?: T;
-  tags?: T;
-  isPublished?: T;
-  schedule?:
-    | T
-    | {
-        startDate?: T;
-        endDate?: T;
-        recurrence?: T;
-        daysOfWeek?: T;
-        startTime?: T;
-        timezone?: T;
-      };
-  sessions?: T;
-  updatedAt?: T;
-  createdAt?: T;
-}
-/**
- * This interface was referenced by `Config`'s JSON-Schema
- * via the `definition` "courses_select".
- */
-export interface CoursesSelect<T extends boolean = true> {
-  title?: T;
-  slug?: T;
-  description?: T;
-  instructor?: T;
-  featuredImage?: T;
-  gallery?: T;
-  priceCents?: T;
-  currency?: T;
-  maxCapacity?: T;
-  durationMinutes?: T;
   location?: T;
   tags?: T;
   isPublished?: T;
@@ -734,7 +590,6 @@ export interface InstructorsSelect<T extends boolean = true> {
 export interface SessionsSelect<T extends boolean = true> {
   sessionType?: T;
   class?: T;
-  course?: T;
   startDateTime?: T;
   timezone?: T;
   status?: T;
@@ -754,8 +609,7 @@ export interface BookingsSelect<T extends boolean = true> {
   lastName?: T;
   email?: T;
   phone?: T;
-  session?: T;
-  course?: T;
+  sessions?: T;
   numberOfPeople?: T;
   status?: T;
   paymentStatus?: T;

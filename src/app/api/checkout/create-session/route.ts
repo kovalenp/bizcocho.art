@@ -2,9 +2,11 @@ import { getPayload } from 'payload'
 import config from '@payload-config'
 import { NextRequest, NextResponse } from 'next/server'
 import Stripe from 'stripe'
+import { logError } from '@/lib/logger'
 
 type CheckoutRequestBody = {
-  session: string  // Changed from classSession
+  classId: string // Required: the class/course ID
+  sessionId?: string // Optional: specific session for class-type bookings
   firstName: string
   lastName: string
   email: string
@@ -26,120 +28,157 @@ export async function POST(request: NextRequest) {
   const stripe = getStripe()
   try {
     const body: CheckoutRequestBody = await request.json()
-    const { session: sessionId, firstName, lastName, email, phone, numberOfPeople, locale = 'en' } = body
+    const { classId, sessionId, firstName, lastName, email, phone, numberOfPeople, locale = 'en' } = body
 
     // Validate required fields
-    if (!sessionId || !firstName || !lastName || !email || !phone || !numberOfPeople) {
-      return NextResponse.json(
-        { error: 'Missing required fields' },
-        { status: 400 }
-      )
+    if (!classId || !firstName || !lastName || !email || !phone || !numberOfPeople) {
+      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
+    }
+
+    const classIdNum = parseInt(classId, 10)
+    if (isNaN(classIdNum)) {
+      return NextResponse.json({ error: 'Invalid class ID' }, { status: 400 })
     }
 
     const payload = await getPayload({ config })
 
-    // Check if the session exists
-    const sessionDoc = await payload.findByID({
-      collection: 'sessions',
-      id: sessionId,
-      depth: 2,
+    // Fetch the class
+    const classDoc = await payload.findByID({
+      collection: 'classes',
+      id: classIdNum,
+      depth: 1,
     })
 
-    if (!sessionDoc) {
-      return NextResponse.json(
-        { error: 'Session not found' },
-        { status: 404 }
-      )
+    if (!classDoc) {
+      return NextResponse.json({ error: 'Class not found' }, { status: 404 })
     }
 
-    // Check if session is cancelled
-    if (sessionDoc.status === 'cancelled') {
-      return NextResponse.json(
-        { error: 'This session has been cancelled' },
-        { status: 400 }
-      )
+    if (!classDoc.isPublished) {
+      return NextResponse.json({ error: 'This offering is not available' }, { status: 400 })
     }
 
-    // Get the class to determine max capacity and price
-    if (!sessionDoc.class) {
-      return NextResponse.json(
-        { error: 'Session has no associated class' },
-        { status: 400 }
-      )
+    // Determine which sessions to book based on class type
+    let sessionsToBook: Array<{ id: number; availableSpots: number | null | undefined }>
+
+    if (classDoc.type === 'course') {
+      // Course: book ALL sessions
+      const allSessions = await payload.find({
+        collection: 'sessions',
+        where: {
+          class: { equals: classDoc.id },
+          status: { equals: 'scheduled' },
+        },
+        limit: 100,
+      })
+
+      if (allSessions.docs.length === 0) {
+        return NextResponse.json({ error: 'No sessions available for this course' }, { status: 400 })
+      }
+
+      sessionsToBook = allSessions.docs.map((s) => ({
+        id: s.id,
+        availableSpots: s.availableSpots,
+      }))
+    } else {
+      // Class: book specific session (sessionId required)
+      if (!sessionId) {
+        return NextResponse.json({ error: 'sessionId is required for class bookings' }, { status: 400 })
+      }
+
+      const sessionIdNum = parseInt(sessionId, 10)
+      if (isNaN(sessionIdNum)) {
+        return NextResponse.json({ error: 'Invalid session ID' }, { status: 400 })
+      }
+
+      const sessionDoc = await payload.findByID({
+        collection: 'sessions',
+        id: sessionIdNum,
+        depth: 0,
+      })
+
+      if (!sessionDoc) {
+        return NextResponse.json({ error: 'Session not found' }, { status: 404 })
+      }
+
+      if (sessionDoc.status === 'cancelled') {
+        return NextResponse.json({ error: 'This session has been cancelled' }, { status: 400 })
+      }
+
+      // Verify session belongs to this class
+      const sessionClassId = typeof sessionDoc.class === 'object' ? sessionDoc.class.id : sessionDoc.class
+      if (sessionClassId !== classDoc.id) {
+        return NextResponse.json({ error: 'Session does not belong to this class' }, { status: 400 })
+      }
+
+      sessionsToBook = [{ id: sessionDoc.id, availableSpots: sessionDoc.availableSpots }]
     }
 
-    const classDoc = typeof sessionDoc.class === 'object'
-      ? sessionDoc.class
-      : await payload.findByID({
-          collection: 'classes',
-          id: typeof sessionDoc.class === 'number'
-            ? sessionDoc.class
-            : parseInt(String(sessionDoc.class), 10),
-        })
+    // Check capacity across all sessions to book
+    const minAvailableSpots = Math.min(
+      ...sessionsToBook.map((s) => s.availableSpots ?? classDoc.maxCapacity ?? 0)
+    )
 
-    // Get current available spots
-    const currentAvailableSpots = sessionDoc.availableSpots !== undefined && sessionDoc.availableSpots !== null
-      ? sessionDoc.availableSpots
-      : classDoc.maxCapacity || 0
-
-    // Check if there's enough capacity
-    if (numberOfPeople > currentAvailableSpots) {
-      return NextResponse.json(
-        { error: 'Not enough capacity available' },
-        { status: 400 }
-      )
+    if (numberOfPeople > minAvailableSpots) {
+      return NextResponse.json({ error: 'Not enough capacity available' }, { status: 400 })
     }
 
-    // Calculate total price (priceCents × numberOfPeople)
-    const pricePerPersonCents = classDoc.priceCents || 0
-    const totalPriceCents = pricePerPersonCents * numberOfPeople
+    // Calculate total price
+    const totalPriceCents = (classDoc.priceCents || 0) * numberOfPeople
     const currency = classDoc.currency || 'eur'
 
-    // P1 FIX: Atomic capacity reservation
-    // First, attempt to decrement spots and verify it didn't go negative
-    const newAvailableSpots = currentAvailableSpots - numberOfPeople
-
-    const updatedSession = await payload.update({
-      collection: 'sessions',
-      id: sessionId,
-      data: {
-        availableSpots: newAvailableSpots,
-      },
-    })
-
-    // Verify the update was valid (re-fetch to check for race condition)
-    const verifiedSession = await payload.findByID({
-      collection: 'sessions',
-      id: sessionId,
-    })
-
-    // If spots went negative due to race condition, rollback and reject
-    if (verifiedSession.availableSpots != null && verifiedSession.availableSpots < 0) {
-      // Rollback: restore the spots we just took
-      await payload.update({
+    // Reserve spots on all sessions
+    const sessionIds = sessionsToBook.map((s) => s.id)
+    const updatePromises = sessionsToBook.map((session) => {
+      const currentSpots = session.availableSpots ?? classDoc.maxCapacity ?? 0
+      return payload.update({
         collection: 'sessions',
-        id: sessionId,
+        id: session.id,
         data: {
-          availableSpots: (verifiedSession.availableSpots || 0) + numberOfPeople,
+          availableSpots: currentSpots - numberOfPeople,
         },
       })
-      return NextResponse.json(
-        { error: 'Not enough capacity available - please try again' },
-        { status: 409 } // Conflict
-      )
+    })
+    await Promise.all(updatePromises)
+
+    // Verify no session went negative (race condition check)
+    const verifiedSessions = await payload.find({
+      collection: 'sessions',
+      where: { id: { in: sessionIds } },
+      limit: 100,
+    })
+
+    const hasNegativeSpots = verifiedSessions.docs.some(
+      (s) => s.availableSpots != null && s.availableSpots < 0
+    )
+
+    if (hasNegativeSpots) {
+      // Rollback: restore spots
+      const rollbackPromises = verifiedSessions.docs.map((session) => {
+        const currentSpots = session.availableSpots ?? 0
+        return payload.update({
+          collection: 'sessions',
+          id: session.id,
+          data: {
+            availableSpots: currentSpots + numberOfPeople,
+          },
+        })
+      })
+      await Promise.all(rollbackPromises)
+
+      return NextResponse.json({ error: 'Not enough capacity available - please try again' }, { status: 409 })
     }
 
-    // Create temporary booking (pending payment)
-    // Set expiration to 30 minutes (Stripe checkout session default timeout)
-    const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString()
+    // Create booking with sessions array (expires in 10 minutes if unpaid)
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString()
+    const bookingType = classDoc.type // 'class' or 'course'
 
     let booking
     try {
       booking = await payload.create({
         collection: 'bookings',
         data: {
-          bookingType: 'class',
-          session: typeof sessionId === 'string' ? parseInt(sessionId, 10) : sessionId,
+          bookingType,
+          sessions: sessionIds,
           firstName,
           lastName,
           email,
@@ -153,34 +192,45 @@ export async function POST(request: NextRequest) {
       })
     } catch (bookingError) {
       // Rollback spots if booking creation fails
-      await payload.update({
-        collection: 'sessions',
-        id: sessionId,
-        data: {
-          availableSpots: (verifiedSession.availableSpots || 0) + numberOfPeople,
-        },
+      const rollbackPromises = verifiedSessions.docs.map((session) => {
+        const currentSpots = session.availableSpots ?? 0
+        return payload.update({
+          collection: 'sessions',
+          id: session.id,
+          data: {
+            availableSpots: currentSpots + numberOfPeople,
+          },
+        })
       })
+      await Promise.all(rollbackPromises)
       throw bookingError
     }
 
-    // Format session date and time for display
-    const startDateTime = new Date(sessionDoc.startDateTime)
-    const sessionDate = startDateTime.toLocaleDateString('en-US', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    })
-    const sessionTime = startDateTime.toLocaleTimeString('en-US', {
-      hour: '2-digit',
-      minute: '2-digit',
-    })
+    // Build Stripe description
+    const classTitle = (classDoc.title as string) || 'Booking'
+    let description: string
 
-    // Get class title (handle localized field)
-    const classTitle = (classDoc.title as string) || 'Class Booking'
+    if (bookingType === 'course') {
+      description = `Full course enrollment - ${sessionsToBook.length} sessions, ${numberOfPeople} ${numberOfPeople === 1 ? 'person' : 'people'}`
+    } else {
+      // Single session - get date/time
+      const firstSession = verifiedSessions.docs[0]
+      const startDateTime = new Date(firstSession.startDateTime)
+      const sessionDate = startDateTime.toLocaleDateString('en-US', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+      })
+      const sessionTime = startDateTime.toLocaleTimeString('en-US', {
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+      description = `${sessionDate} at ${sessionTime} - ${numberOfPeople} ${numberOfPeople === 1 ? 'person' : 'people'}`
+    }
 
     // Create Stripe Checkout Session
-    const session = await stripe.checkout.sessions.create({
+    const stripeSession = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
       line_items: [
         {
@@ -188,7 +238,7 @@ export async function POST(request: NextRequest) {
             currency: currency.toLowerCase(),
             product_data: {
               name: classTitle,
-              description: `${sessionDate} at ${sessionTime} - ${numberOfPeople} ${numberOfPeople === 1 ? 'person' : 'people'}`,
+              description,
             },
             unit_amount: totalPriceCents,
           },
@@ -201,8 +251,9 @@ export async function POST(request: NextRequest) {
       customer_email: email,
       metadata: {
         bookingId: booking.id.toString(),
-        bookingType: 'class',
-        sessionId: sessionId.toString(),
+        bookingType,
+        classId: classIdNum.toString(),
+        sessionIds: sessionIds.join(','), // Store all session IDs
         firstName,
         lastName,
         phone,
@@ -216,23 +267,21 @@ export async function POST(request: NextRequest) {
       collection: 'bookings',
       id: booking.id,
       data: {
-        stripePaymentIntentId: session.id, // Store checkout session ID for now
+        stripePaymentIntentId: stripeSession.id,
       },
     })
 
     return NextResponse.json(
       {
         success: true,
-        checkoutUrl: session.url,
+        checkoutUrl: stripeSession.url,
         bookingId: booking.id,
       },
       { status: 200 }
     )
   } catch (error) {
-    console.error('Checkout session creation error:', error)
-    return NextResponse.json(
-      { error: 'Failed to create checkout session' },
-      { status: 500 }
-    )
+    logError('Checkout session creation failed', error)
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+    return NextResponse.json({ error: 'Failed to create checkout session', details: errorMessage }, { status: 500 })
   }
 }

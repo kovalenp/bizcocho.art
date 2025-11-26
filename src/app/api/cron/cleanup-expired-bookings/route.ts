@@ -1,10 +1,14 @@
 import { getPayload } from 'payload'
 import config from '@payload-config'
 import { NextRequest, NextResponse } from 'next/server'
+import { logError, logInfo } from '@/lib/logger'
 
 /**
  * Cleanup expired pending bookings and restore session capacity.
- * This endpoint should be called by a cron job every 5-10 minutes.
+ * Bookings expire after 10 minutes if unpaid.
+ * This endpoint should be called by a cron job every 5 minutes.
+ *
+ * Local testing: curl http://localhost:4321/api/cron/cleanup-expired-bookings
  *
  * To secure this endpoint in production, add a secret token check:
  * - Set CRON_SECRET in environment variables
@@ -51,35 +55,20 @@ export async function POST(request: NextRequest) {
       try {
         const numberOfPeople = booking.numberOfPeople || 1
 
-        if (booking.bookingType === 'class' && booking.session) {
-          // Restore spots for class session
-          const sessionId = typeof booking.session === 'object' ? booking.session.id : booking.session
-          const session = await payload.findByID({
-            collection: 'sessions',
-            id: sessionId,
-          }).catch(() => null)
+        // Get session IDs from the booking (unified approach for both class and course)
+        const sessionIds = Array.isArray(booking.sessions)
+          ? booking.sessions.map((s: { id: number } | number) => (typeof s === 'object' ? s.id : s))
+          : []
 
-          if (session) {
-            await payload.update({
-              collection: 'sessions',
-              id: sessionId,
-              data: {
-                availableSpots: (session.availableSpots || 0) + numberOfPeople,
-              },
-            })
-          }
-        } else if (booking.bookingType === 'course' && booking.course) {
-          // Restore spots for all course sessions
-          const courseId = typeof booking.course === 'object' ? booking.course.id : booking.course
+        if (sessionIds.length > 0) {
+          // Restore spots for all sessions in the booking
           const sessions = await payload.find({
             collection: 'sessions',
-            where: {
-              course: { equals: courseId },
-            },
+            where: { id: { in: sessionIds } },
             limit: 100,
           })
 
-          const updatePromises = sessions.docs.map(session =>
+          const updatePromises = sessions.docs.map((session) =>
             payload.update({
               collection: 'sessions',
               id: session.id,
@@ -100,13 +89,13 @@ export async function POST(request: NextRequest) {
 
         cleanedCount++
       } catch (error) {
-        const errorMsg = `Failed to cleanup booking ${booking.id}: ${error}`
-        console.error(errorMsg)
+        const errorMsg = `Failed to cleanup booking ${booking.id}`
+        logError(errorMsg, error, { bookingId: booking.id })
         errors.push(errorMsg)
       }
     }
 
-    console.log(`Cleaned up ${cleanedCount} expired bookings`)
+    logInfo('Cleaned up expired bookings', { cleanedCount, errorCount: errors.length })
 
     return NextResponse.json({
       success: true,
@@ -115,7 +104,7 @@ export async function POST(request: NextRequest) {
       errors: errors.length > 0 ? errors : undefined,
     })
   } catch (error) {
-    console.error('Cleanup cron error:', error)
+    logError('Cleanup cron failed', error)
     return NextResponse.json(
       { error: 'Cleanup failed' },
       { status: 500 }

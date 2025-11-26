@@ -2,13 +2,12 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import type { Tag, Media } from '@/payload-types'
+import type { Class, Tag, Media } from '@/payload-types'
 import type { Messages } from '@/i18n/messages'
 import type { Locale } from '@/i18n/config'
-import { type DisplayItem, isClassItem, isCourseItem, getDisplayItemProps } from '@/types/display'
 
 type ClassFilterProps = {
-  classes: DisplayItem[]
+  classes: Class[]
   tags: Tag[]
   messages: Messages
   locale: Locale
@@ -18,8 +17,8 @@ export function ClassFilter({ classes, tags, messages, locale }: ClassFilterProp
   const [selectedTag, setSelectedTag] = useState<string | number | null>(null)
 
   const filteredClasses = selectedTag
-    ? classes.filter((item) => {
-        const itemTags = item.data.tags as (string | Tag)[]
+    ? classes.filter((classDoc) => {
+        const itemTags = classDoc.tags as (string | Tag)[]
         if (!itemTags) return false
         return itemTags.some((tag) => {
           const tagId = typeof tag === 'string' ? tag : tag.id
@@ -60,13 +59,9 @@ export function ClassFilter({ classes, tags, messages, locale }: ClassFilterProp
       {/* Class Grid */}
       {filteredClasses.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-          {filteredClasses.map((item) => {
-            // Create unique key using item type and id to avoid collisions
-            const uniqueKey = `${item.itemType}-${item.data.id}`
-            return (
-              <ClassCard key={uniqueKey} item={item} messages={messages} locale={locale} />
-            )
-          })}
+          {filteredClasses.map((classDoc) => (
+            <ClassCard key={classDoc.id} classDoc={classDoc} messages={messages} locale={locale} />
+          ))}
         </div>
       ) : (
         <div className="text-center p-12 bg-gray-50 rounded-lg">
@@ -82,15 +77,12 @@ export function ClassFilter({ classes, tags, messages, locale }: ClassFilterProp
   )
 }
 
-function ClassCard({ item, messages, locale }: { item: DisplayItem; messages: Messages; locale: Locale }) {
-  const props = getDisplayItemProps(item)
-  const featuredImage = props.featuredImage
-  const itemTags = props.tags
+function ClassCard({ classDoc, messages, locale }: { classDoc: Class; messages: Messages; locale: Locale }) {
+  const featuredImage = classDoc.featuredImage as Media | null
+  const itemTags = (classDoc.tags || []) as Tag[]
 
-  // Use the proper type for link path
-  const linkPath = isCourseItem(item)
-    ? `/${locale}/courses/${props.slug}`
-    : `/${locale}/classes/${props.slug}`
+  // Unified: all classes/courses now go to /offerings/[slug]
+  const linkPath = `/${locale}/offerings/${classDoc.slug}`
 
   return (
     <Link
@@ -102,7 +94,7 @@ function ClassCard({ item, messages, locale }: { item: DisplayItem; messages: Me
           <div className="overflow-hidden h-64 rounded-xl relative">
             <img
               src={featuredImage.url}
-              alt={props.title}
+              alt={classDoc.title as string}
               className="w-full h-full object-cover transition-transform duration-500 ease-out group-hover:scale-110"
             />
           </div>
@@ -114,12 +106,12 @@ function ClassCard({ item, messages, locale }: { item: DisplayItem; messages: Me
           <div className="flex items-center gap-3">
             {/* Available Slots - Black Pill */}
             <span className="bg-black text-white px-3 py-1 rounded-full text-xs font-medium">
-              {props.maxCapacity} {messages.home.spots}
+              {classDoc.maxCapacity} {messages.home.spots}
             </span>
 
             {/* Price */}
             <span className="text-lg font-medium text-gray-900 group-hover:text-white transition-colors duration-300">
-              €{(props.priceCents / 100).toFixed(2)}
+              €{((classDoc.priceCents || 0) / 100).toFixed(2)}
             </span>
           </div>
 
@@ -132,12 +124,12 @@ function ClassCard({ item, messages, locale }: { item: DisplayItem; messages: Me
         </div>
 
         <h3 className="mb-2 text-xl font-medium text-gray-900 group-hover:text-white transition-colors duration-300">
-          {props.title}
+          {classDoc.title}
         </h3>
 
-        {props.description && (
+        {classDoc.description && (
           <p className="text-gray-600 leading-relaxed text-sm line-clamp-3 group-hover:text-white/90 transition-colors duration-300">
-            {props.description}
+            {classDoc.description}
           </p>
         )}
       </div>

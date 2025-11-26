@@ -1,10 +1,11 @@
 import type { CollectionConfig } from 'payload'
+import { logWarn, logInfo } from '../lib/logger'
 
 export const Bookings: CollectionConfig = {
   slug: 'bookings',
   admin: {
     useAsTitle: 'email',
-    defaultColumns: ['email', 'bookingType', 'session', 'course', 'numberOfPeople', 'status', 'paymentStatus'],
+    defaultColumns: ['email', 'bookingType', 'sessions', 'numberOfPeople', 'status', 'paymentStatus'],
   },
   fields: [
     {
@@ -22,7 +23,7 @@ export const Bookings: CollectionConfig = {
         },
       ],
       admin: {
-        description: 'Type of booking: individual class session or full course',
+        description: 'Type of booking: individual class session or full course enrollment',
         position: 'sidebar',
       },
     },
@@ -68,23 +69,13 @@ export const Bookings: CollectionConfig = {
       },
     },
     {
-      name: 'session',
+      name: 'sessions',
       type: 'relationship',
       relationTo: 'sessions',
-      required: false,
+      hasMany: true,
+      required: true,
       admin: {
-        description: 'The specific session being booked (for class bookings)',
-        condition: (data) => data.bookingType === 'class',
-      },
-    },
-    {
-      name: 'course',
-      type: 'relationship',
-      relationTo: 'courses',
-      required: false,
-      admin: {
-        description: 'The course being enrolled in (for course bookings)',
-        condition: (data) => data.bookingType === 'course',
+        description: 'Sessions included in this booking (1 for class, multiple for course)',
       },
     },
     {
@@ -102,7 +93,7 @@ export const Bookings: CollectionConfig = {
       type: 'select',
       required: true,
       defaultValue: 'pending',
-      index: true, // P3 FIX: Index for filtering by status
+      index: true,
       options: [
         {
           label: 'Pending',
@@ -131,7 +122,7 @@ export const Bookings: CollectionConfig = {
       type: 'select',
       required: true,
       defaultValue: 'unpaid',
-      index: true, // P3 FIX: Index for filtering by payment status
+      index: true,
       options: [
         {
           label: 'Unpaid',
@@ -171,7 +162,7 @@ export const Bookings: CollectionConfig = {
     {
       name: 'expiresAt',
       type: 'date',
-      index: true, // P3 FIX: Index for cleanup cron job queries
+      index: true,
       admin: {
         description: 'Expiration time for pending reservations (auto-cleaned up after this time)',
         date: {
@@ -197,25 +188,31 @@ export const Bookings: CollectionConfig = {
   ],
   hooks: {
     beforeValidate: [
-      async ({ data, operation }) => {
-        // Validation: Must have either session OR course (not both, not neither)
+      async ({ data, operation, req }) => {
         if (operation === 'create' || operation === 'update') {
-          const hasSession = !!data?.session
-          const hasCourse = !!data?.course
-
-          if (!hasSession && !hasCourse) {
-            throw new Error('Booking must be for either a session or a course')
+          // Validation: Must have at least one session
+          const sessions = data?.sessions
+          if (!sessions || (Array.isArray(sessions) && sessions.length === 0)) {
+            throw new Error('Booking must include at least one session')
           }
 
-          if (hasSession && hasCourse) {
-            throw new Error('Booking cannot be for both a session and a course')
-          }
+          // Auto-set bookingType based on first session's parent class type
+          if (Array.isArray(sessions) && sessions.length > 0 && req?.payload) {
+            const firstSessionId = typeof sessions[0] === 'object' ? sessions[0].id : sessions[0]
 
-          // Auto-set bookingType based on relationships
-          if (hasSession) {
-            data.bookingType = 'class'
-          } else if (hasCourse) {
-            data.bookingType = 'course'
+            try {
+              const session = await req.payload.findByID({
+                collection: 'sessions',
+                id: firstSessionId,
+                depth: 0,
+              })
+
+              if (session?.sessionType) {
+                data.bookingType = session.sessionType // 'class' or 'course'
+              }
+            } catch {
+              // Session lookup failed, keep existing bookingType
+            }
           }
         }
 
@@ -224,80 +221,72 @@ export const Bookings: CollectionConfig = {
     ],
     afterChange: [
       async ({ doc, req, operation, previousDoc }) => {
-        // Sync capacity across course sessions when course booking is created/updated
-        if (doc.bookingType === 'course' && doc.course) {
-          const { payload } = req
-          const numberOfPeople = doc.numberOfPeople
+        const { payload } = req
+        const numberOfPeople = doc.numberOfPeople
 
-          // Extract course ID (could be object or number)
-          const courseId = typeof doc.course === 'object' ? doc.course.id : doc.course
-          if (!courseId || (typeof courseId !== 'number' && isNaN(Number(courseId)))) {
-            console.warn('Invalid course ID in booking:', doc.course)
-            return doc
+        // Get session IDs from the booking
+        const sessionIds = Array.isArray(doc.sessions)
+          ? doc.sessions.map((s: { id: number } | number) => (typeof s === 'object' ? s.id : s))
+          : []
+
+        if (sessionIds.length === 0) {
+          return doc
+        }
+
+        // Determine capacity change
+        // NOTE: The checkout API already reserves spots when creating the pending booking.
+        // We only need to handle:
+        // 1. Cancellation (restore spots)
+        // 2. Number of people changes on confirmed bookings
+        // We do NOT decrement on confirmation because checkout API already did that.
+        let capacityChange = 0
+
+        if (operation === 'update') {
+          const wasConfirmed = previousDoc?.status === 'confirmed'
+          const wasPending = previousDoc?.status === 'pending'
+          const isConfirmed = doc.status === 'confirmed'
+          const isCancelled = doc.status === 'cancelled'
+          const previousPeople = previousDoc?.numberOfPeople || 0
+
+          if ((wasConfirmed || wasPending) && isCancelled) {
+            // Cancelled: restore capacity (spots were reserved at checkout)
+            capacityChange = previousPeople
+          } else if (wasConfirmed && isConfirmed && numberOfPeople !== previousPeople) {
+            // Changed number of people on confirmed booking: adjust
+            capacityChange = previousPeople - numberOfPeople
           }
+          // Note: pending → confirmed does NOT change capacity because
+          // the checkout API already reserved the spots
+        }
 
-          // Find all sessions for this course
+        // Update all sessions in the booking
+        if (capacityChange !== 0) {
           const sessions = await payload.find({
             collection: 'sessions',
-            where: {
-              course: {
-                equals: typeof courseId === 'number' ? courseId : Number(courseId),
-              },
-            },
+            where: { id: { in: sessionIds } },
             limit: 100,
           })
 
-          if (sessions.docs.length === 0) {
-            console.warn(`No sessions found for course: ${doc.course}`)
-            return doc
-          }
+          const updatePromises = sessions.docs.map((session) => {
+            const currentSpots = session.availableSpots || 0
+            const newSpots = currentSpots + capacityChange
 
-          // Determine capacity change
-          // NOTE: For course bookings, the checkout API already reserves spots when creating
-          // the pending booking. We only need to handle:
-          // 1. Cancellation (restore spots)
-          // 2. Number of people changes on confirmed bookings
-          // We do NOT decrement on confirmation because checkout API already did that.
-          let capacityChange = 0
-
-          if (operation === 'update') {
-            const wasConfirmed = previousDoc?.status === 'confirmed'
-            const wasPending = previousDoc?.status === 'pending'
-            const isConfirmed = doc.status === 'confirmed'
-            const isCancelled = doc.status === 'cancelled'
-            const previousPeople = previousDoc?.numberOfPeople || 0
-
-            if ((wasConfirmed || wasPending) && isCancelled) {
-              // Cancelled: restore capacity (spots were reserved at checkout)
-              capacityChange = previousPeople
-            } else if (wasConfirmed && isConfirmed && numberOfPeople !== previousPeople) {
-              // Changed number of people on confirmed booking: adjust
-              capacityChange = previousPeople - numberOfPeople
-            }
-            // Note: pending → confirmed does NOT change capacity because
-            // the checkout API already reserved the spots
-          }
-
-          // Update all course sessions
-          if (capacityChange !== 0) {
-            const updatePromises = sessions.docs.map((session) => {
-              const currentSpots = session.availableSpots || 0
-              const newSpots = currentSpots + capacityChange
-
-              return payload.update({
-                collection: 'sessions',
-                id: session.id,
-                data: {
-                  availableSpots: Math.max(0, newSpots),
-                },
-              })
+            return payload.update({
+              collection: 'sessions',
+              id: session.id,
+              data: {
+                availableSpots: Math.max(0, newSpots),
+              },
             })
+          })
 
-            await Promise.all(updatePromises)
-            console.log(
-              `✅ Updated capacity for ${sessions.docs.length} course sessions (change: ${capacityChange})`
-            )
-          }
+          await Promise.all(updatePromises)
+          logInfo('Updated capacity for booking sessions', {
+            bookingId: doc.id,
+            bookingType: doc.bookingType,
+            sessionsCount: sessions.docs.length,
+            capacityChange,
+          })
         }
 
         return doc

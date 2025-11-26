@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import { getPayload } from 'payload'
 import config from '@payload-config'
 import Stripe from 'stripe'
+import { logError } from '@/lib/logger'
 
 type PageProps = {
   params: Promise<{ locale: string }>
@@ -33,9 +34,7 @@ export default async function BookingCancelPage({ params, searchParams }: PagePr
 
     if (session.metadata) {
       const bookingId = session.metadata.bookingId
-      const bookingType = session.metadata.bookingType || 'class'
-      const classSessionId = session.metadata.sessionId
-      const courseId = session.metadata.courseId
+      const sessionIds = session.metadata.sessionIds // Unified: comma-separated session IDs
       const numberOfPeople = parseInt(session.metadata.numberOfPeople || '0', 10)
 
       if (bookingId) {
@@ -54,14 +53,15 @@ export default async function BookingCancelPage({ params, searchParams }: PagePr
             id: parseInt(bookingId, 10),
           })
 
-          // Restore available spots based on booking type
-          if (bookingType === 'course' && courseId) {
-            const courseIdNum = parseInt(courseId, 10)
-            if (!isNaN(courseIdNum)) {
+          // Restore available spots for all sessions (unified approach)
+          if (sessionIds && numberOfPeople > 0) {
+            const sessionIdArray = sessionIds.split(',').map(id => parseInt(id.trim(), 10)).filter(id => !isNaN(id))
+
+            if (sessionIdArray.length > 0) {
               const sessions = await payload.find({
                 collection: 'sessions',
                 where: {
-                  course: { equals: courseIdNum },
+                  id: { in: sessionIdArray },
                 },
                 limit: 100,
               })
@@ -79,31 +79,12 @@ export default async function BookingCancelPage({ params, searchParams }: PagePr
 
               await Promise.all(updatePromises)
             }
-          } else if (classSessionId) {
-            const sessionIdNum = parseInt(classSessionId, 10)
-            if (!isNaN(sessionIdNum)) {
-              const sessionDoc = await payload.findByID({
-                collection: 'sessions',
-                id: sessionIdNum,
-              }).catch(() => null)
-
-              if (sessionDoc) {
-                const currentSpots = sessionDoc.availableSpots || 0
-                await payload.update({
-                  collection: 'sessions',
-                  id: sessionIdNum,
-                  data: {
-                    availableSpots: currentSpots + numberOfPeople,
-                  },
-                })
-              }
-            }
           }
         }
       }
     }
   } catch (error) {
-    console.error('Error handling cancelled booking:', error)
+    logError('Error handling cancelled booking', error, { sessionId })
     // Continue to show the page even if cleanup fails
   }
 
@@ -155,18 +136,12 @@ export default async function BookingCancelPage({ params, searchParams }: PagePr
           </div>
 
           {/* Actions */}
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
+          <div className="flex justify-center">
             <Link
               href={`/${locale}`}
               className="inline-flex items-center justify-center px-6 py-3 border border-transparent text-base font-medium rounded-md text-white bg-primary hover:bg-primary/90 transition-colors"
             >
-              {isSpanish ? 'Ver Clases' : 'Browse Classes'}
-            </Link>
-            <Link
-              href={`/${locale}/courses`}
-              className="inline-flex items-center justify-center px-6 py-3 border border-gray-300 text-base font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 transition-colors"
-            >
-              {isSpanish ? 'Ver Cursos' : 'Browse Courses'}
+              {isSpanish ? 'Ver Ofertas' : 'Browse Offerings'}
             </Link>
           </div>
         </div>

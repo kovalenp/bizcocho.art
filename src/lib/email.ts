@@ -1,5 +1,5 @@
 import nodemailer from 'nodemailer'
-import type { Booking, Course, Session } from '@/payload-types'
+import type { Booking, Class, Session } from '@/payload-types'
 
 type BookingWithRelations = Booking & {
   session?: any
@@ -13,7 +13,7 @@ interface SendBookingConfirmationEmailParams {
 
 interface SendCourseConfirmationEmailParams {
   booking: Booking
-  course: Course
+  classDoc: Class
   sessions: Session[]
   locale: 'en' | 'es'
 }
@@ -273,20 +273,20 @@ ${t.footer}
 
 export async function sendCourseConfirmationEmail({
   booking,
-  course,
+  classDoc,
   sessions,
   locale = 'en',
 }: SendCourseConfirmationEmailParams): Promise<void> {
   // Get localized course title
-  const courseTitle = (course.title as string) || 'Course'
+  const courseTitle = (classDoc.title as string) || 'Course'
 
   // Get location
-  const location = (course.location as string) || 'TBD'
+  const location = (classDoc.location as string) || 'TBD'
 
   // Calculate total price
-  const pricePerPerson = (course.priceCents || 0) / 100
+  const pricePerPerson = (classDoc.priceCents || 0) / 100
   const totalPrice = pricePerPerson * booking.numberOfPeople
-  const currency = course.currency === 'eur' ? '€' : '$'
+  const currency = classDoc.currency === 'eur' ? '€' : '$'
 
   // Format session dates
   const sessionDates = sessions.map((session, index) => {

@@ -1,9 +1,10 @@
 import { getPayload } from 'payload'
 import config from '@payload-config'
 import { NextRequest, NextResponse } from 'next/server'
+import { logError } from '@/lib/logger'
 
 type BookingRequestBody = {
-  session: string  // Changed from classSession
+  sessionId: string
   firstName: string
   lastName: string
   email: string
@@ -14,7 +15,7 @@ type BookingRequestBody = {
 export async function POST(request: NextRequest) {
   try {
     const body: BookingRequestBody = await request.json()
-    const { session: sessionId, firstName, lastName, email, phone, numberOfPeople } = body
+    const { sessionId, firstName, lastName, email, phone, numberOfPeople } = body
 
     // Validate required fields
     if (!sessionId || !firstName || !lastName || !email || !phone || !numberOfPeople) {
@@ -76,12 +77,13 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Create the booking
+    // Create the booking with sessions array (unified model)
+    const parsedSessionId = typeof sessionId === 'string' ? parseInt(sessionId, 10) : sessionId
     const booking = await payload.create({
       collection: 'bookings',
       data: {
         bookingType: 'class',
-        session: typeof sessionId === 'string' ? parseInt(sessionId, 10) : sessionId,
+        sessions: [parsedSessionId],
         firstName,
         lastName,
         email,
@@ -115,7 +117,7 @@ export async function POST(request: NextRequest) {
       { status: 201 }
     )
   } catch (error) {
-    console.error('Booking error:', error)
+    logError('Failed to create booking', error)
     return NextResponse.json(
       { error: 'Failed to create booking' },
       { status: 500 }
