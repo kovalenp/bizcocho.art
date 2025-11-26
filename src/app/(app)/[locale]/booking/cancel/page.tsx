@@ -5,6 +5,7 @@ import config from '@payload-config'
 import Stripe from 'stripe'
 
 type PageProps = {
+  params: Promise<{ locale: string }>
   searchParams: Promise<{ session_id?: string }>
 }
 
@@ -17,12 +18,12 @@ function getStripe() {
   })
 }
 
-export default async function BookingCancelPage({ searchParams }: PageProps) {
-  const params = await searchParams
-  const sessionId = params.session_id
+export default async function BookingCancelPage({ params, searchParams }: PageProps) {
+  const { locale } = await params
+  const { session_id: sessionId } = await searchParams
 
   if (!sessionId) {
-    redirect('/')
+    redirect(`/${locale}`)
   }
 
   // Handle cleanup: delete booking and restore spots
@@ -32,33 +33,72 @@ export default async function BookingCancelPage({ searchParams }: PageProps) {
 
     if (session.metadata) {
       const bookingId = session.metadata.bookingId
-      const classSessionId = session.metadata.classSessionId
+      const bookingType = session.metadata.bookingType || 'class'
+      const classSessionId = session.metadata.sessionId
+      const courseId = session.metadata.courseId
       const numberOfPeople = parseInt(session.metadata.numberOfPeople || '0', 10)
 
-      if (bookingId && classSessionId) {
+      if (bookingId) {
         const payload = await getPayload({ config })
 
-        // Delete the booking
-        await payload.delete({
+        // Check if booking exists before trying to delete
+        const existingBooking = await payload.findByID({
           collection: 'bookings',
           id: parseInt(bookingId, 10),
-        })
+        }).catch(() => null)
 
-        // Restore available spots
-        const classSessionDoc = await payload.findByID({
-          collection: 'class-sessions',
-          id: classSessionId,
-        })
-
-        if (classSessionDoc) {
-          const currentSpots = classSessionDoc.availableSpots || 0
-          await payload.update({
-            collection: 'class-sessions',
-            id: classSessionId,
-            data: {
-              availableSpots: currentSpots + numberOfPeople,
-            },
+        if (existingBooking && existingBooking.status === 'pending') {
+          // Delete the booking
+          await payload.delete({
+            collection: 'bookings',
+            id: parseInt(bookingId, 10),
           })
+
+          // Restore available spots based on booking type
+          if (bookingType === 'course' && courseId) {
+            const courseIdNum = parseInt(courseId, 10)
+            if (!isNaN(courseIdNum)) {
+              const sessions = await payload.find({
+                collection: 'sessions',
+                where: {
+                  course: { equals: courseIdNum },
+                },
+                limit: 100,
+              })
+
+              const updatePromises = sessions.docs.map(sessionDoc => {
+                const currentSpots = sessionDoc.availableSpots || 0
+                return payload.update({
+                  collection: 'sessions',
+                  id: sessionDoc.id,
+                  data: {
+                    availableSpots: currentSpots + numberOfPeople,
+                  },
+                })
+              })
+
+              await Promise.all(updatePromises)
+            }
+          } else if (classSessionId) {
+            const sessionIdNum = parseInt(classSessionId, 10)
+            if (!isNaN(sessionIdNum)) {
+              const sessionDoc = await payload.findByID({
+                collection: 'sessions',
+                id: sessionIdNum,
+              }).catch(() => null)
+
+              if (sessionDoc) {
+                const currentSpots = sessionDoc.availableSpots || 0
+                await payload.update({
+                  collection: 'sessions',
+                  id: sessionIdNum,
+                  data: {
+                    availableSpots: currentSpots + numberOfPeople,
+                  },
+                })
+              }
+            }
+          }
         }
       }
     }
@@ -66,6 +106,8 @@ export default async function BookingCancelPage({ searchParams }: PageProps) {
     console.error('Error handling cancelled booking:', error)
     // Continue to show the page even if cleanup fails
   }
+
+  const isSpanish = locale === 'es'
 
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
@@ -92,35 +134,39 @@ export default async function BookingCancelPage({ searchParams }: PageProps) {
 
           {/* Cancel Message */}
           <h1 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">
-            Booking Cancelled
+            {isSpanish ? 'Reserva Cancelada' : 'Booking Cancelled'}
           </h1>
           <p className="text-lg text-gray-600 mb-8">
-            Your booking has been cancelled and no payment was processed. The class spots have been
-            released back to availability.
+            {isSpanish
+              ? 'Tu reserva ha sido cancelada y no se ha procesado ningún pago. Los lugares han sido liberados.'
+              : 'Your booking has been cancelled and no payment was processed. The spots have been released back to availability.'}
           </p>
 
           {/* Information Box */}
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 mb-8 text-left">
-            <h2 className="font-semibold text-blue-900 mb-2">Want to try again?</h2>
+            <h2 className="font-semibold text-blue-900 mb-2">
+              {isSpanish ? '¿Quieres intentarlo de nuevo?' : 'Want to try again?'}
+            </h2>
             <p className="text-blue-800 text-sm">
-              If you changed your mind or encountered an issue, you can return to the class page
-              and complete your booking. The session is still available.
+              {isSpanish
+                ? 'Si cambiaste de opinión o tuviste algún problema, puedes volver a la página y completar tu reserva.'
+                : 'If you changed your mind or encountered an issue, you can return to the page and complete your booking.'}
             </p>
           </div>
 
           {/* Actions */}
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <Link
-              href="/classes"
+              href={`/${locale}`}
               className="inline-flex items-center justify-center px-6 py-3 border border-transparent text-base font-medium rounded-md text-white bg-primary hover:bg-primary/90 transition-colors"
             >
-              Browse Classes
+              {isSpanish ? 'Ver Clases' : 'Browse Classes'}
             </Link>
             <Link
-              href="/"
+              href={`/${locale}/courses`}
               className="inline-flex items-center justify-center px-6 py-3 border border-gray-300 text-base font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 transition-colors"
             >
-              Back to Home
+              {isSpanish ? 'Ver Cursos' : 'Browse Courses'}
             </Link>
           </div>
         </div>

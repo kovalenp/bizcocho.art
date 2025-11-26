@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import type { ClassTemplate, ClassSession, Media, Instructor, Tag } from '@/payload-types'
+import type { Class, Session, Media, Instructor, Tag } from '@/payload-types'
 import type { Messages } from '@/i18n/messages'
 import { ImageGallery } from './ImageGallery'
 import { ClassInfo } from './ClassInfo'
@@ -10,8 +10,8 @@ import { InstructorInfo } from './InstructorInfo'
 import { BookingWidget } from '../booking/BookingWidget'
 
 type ClassDetailLayoutProps = {
-  classTemplate: ClassTemplate
-  classSessions: ClassSession[]
+  classTemplate: Class
+  classSessions: Session[]
   featuredImage: Media | null
   gallery: Media[]
   tags: Tag[]

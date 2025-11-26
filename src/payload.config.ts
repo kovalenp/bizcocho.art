@@ -10,13 +10,11 @@ import sharp from 'sharp'
 import { Users } from './collections/Users'
 import { Media } from './collections/Media'
 import { Tags } from './collections/Tags'
-import { ClassTemplates } from './collections/ClassTemplates'
+import { Classes } from './collections/Classes'
+import { Courses } from './collections/Courses'
 import { Instructors } from './collections/Instructors'
-import { ClassSessions } from './collections/ClassSessions'
-import { Memberships } from './collections/Memberships'
-import { MembershipSchedules } from './collections/MembershipSchedules'
+import { Sessions } from './collections/Sessions'
 import { Bookings } from './collections/Bookings'
-import { Subscriptions } from './collections/Subscriptions'
 
 const filename = fileURLToPath(import.meta.url)
 const dirname = path.dirname(filename)
@@ -32,13 +30,11 @@ export default buildConfig({
     Users,
     Media,
     Tags,
-    ClassTemplates,
+    Classes,
+    Courses,
     Instructors,
-    ClassSessions,
-    Memberships,
-    MembershipSchedules,
+    Sessions,
     Bookings,
-    Subscriptions,
   ],
   editor: lexicalEditor(),
   secret: process.env.PAYLOAD_SECRET || '',

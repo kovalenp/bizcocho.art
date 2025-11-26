@@ -14,17 +14,7 @@ process.env.PAYLOAD_DROP_DATABASE = 'true'
 async function seed() {
   console.log('🌱 Starting comprehensive database seed...')
 
-  // Clean up old media files
-  console.log('\n🗑️  Cleaning old media files...')
   const mediaDir = path.resolve(__dirname, '../media')
-  if (fs.existsSync(mediaDir)) {
-    const files = fs.readdirSync(mediaDir)
-    const imageFiles = files.filter((file) => /\.(jpg|jpeg|png|gif|webp)$/i.test(file))
-    for (const file of imageFiles) {
-      fs.unlinkSync(path.join(mediaDir, file))
-    }
-    console.log(`✅ Removed ${imageFiles.length} old media file(s)`)
-  }
 
   // Dynamically import config after env vars are loaded
   const { getPayload } = await import('payload')
@@ -65,6 +55,74 @@ async function seed() {
     // ======================
     console.log('\n📋 Step 2: Creating sample media...')
 
+    // Media file definitions
+    const mediaFiles = [
+      {
+        filename: 'ceramic-pot.jpg',
+        url: 'https://picsum.photos/800/600?random=1',
+        alt: { en: 'Ceramic pot painting class', es: 'Clase de pintura de cerámica' },
+        title: 'Ceramic Pot Class',
+      },
+      {
+        filename: 'wheel-throwing.jpg',
+        url: 'https://picsum.photos/800/600?random=2',
+        alt: { en: 'Wheel throwing class', es: 'Clase de torno' },
+        title: 'Wheel Throwing Class',
+      },
+      {
+        filename: 'hand-building.jpg',
+        url: 'https://picsum.photos/800/600?random=3',
+        alt: { en: 'Hand building class', es: 'Clase de construcción manual' },
+        title: 'Hand Building Class',
+      },
+      {
+        filename: 'glazing-class.jpg',
+        url: 'https://picsum.photos/800/600?random=4',
+        alt: { en: 'Glazing techniques class', es: 'Clase de técnicas de esmaltado' },
+        title: 'Glazing Class',
+      },
+      {
+        filename: 'gallery-1.jpg',
+        url: 'https://picsum.photos/800/600?random=5',
+        alt: { en: 'Studio gallery 1', es: 'Galería del estudio 1' },
+        title: 'Gallery Image 1',
+      },
+      {
+        filename: 'gallery-2.jpg',
+        url: 'https://picsum.photos/800/600?random=6',
+        alt: { en: 'Studio gallery 2', es: 'Galería del estudio 2' },
+        title: 'Gallery Image 2',
+      },
+      {
+        filename: 'gallery-3.jpg',
+        url: 'https://picsum.photos/800/600?random=7',
+        alt: { en: 'Studio gallery 3', es: 'Galería del estudio 3' },
+        title: 'Gallery Image 3',
+      },
+      {
+        filename: 'instructor-elena.jpg',
+        url: 'https://i.pravatar.cc/300?img=5', // Woman avatar
+        alt: { en: 'Elena Martínez photo', es: 'Foto de Elena Martínez' },
+        title: 'Elena Martínez',
+      },
+      {
+        filename: 'instructor-pablo.jpg',
+        url: 'https://i.pravatar.cc/300?img=12', // Man avatar
+        alt: { en: 'Pablo Sánchez photo', es: 'Foto de Pablo Sánchez' },
+        title: 'Pablo Sánchez',
+      },
+    ]
+
+    // Check if media directory has existing images
+    let existingImages: string[] = []
+    if (fs.existsSync(mediaDir)) {
+      existingImages = fs.readdirSync(mediaDir).filter((file) => /\.(jpg|jpeg|png|gif|webp)$/i.test(file))
+    } else {
+      fs.mkdirSync(mediaDir, { recursive: true })
+    }
+
+    const shouldDownloadImages = existingImages.length === 0
+
     // Helper function to fetch image from URL
     async function fetchImageFromUrl(url: string): Promise<Buffer> {
       const response = await fetch(url)
@@ -75,123 +133,112 @@ async function seed() {
       return Buffer.from(arrayBuffer)
     }
 
-    const mediaFiles = [
-      {
-        filename: 'watercolor-class.jpg',
-        url: 'https://picsum.photos/800/600',
-        alt: {
-          en: 'Watercolor class image',
-          es: 'Imagen de clase de acuarela',
-        },
-        title: 'Watercolor Class',
-      },
-      {
-        filename: 'acrylics-class.jpg',
-        url: 'https://picsum.photos/800/600',
-        alt: {
-          en: 'Acrylics class image',
-          es: 'Imagen de clase de acrílicos',
-        },
-        title: 'Acrylics Class',
-      },
-      {
-        filename: 'portrait-class.jpg',
-        url: 'https://picsum.photos/800/600',
-        alt: {
-          en: 'Portrait class image',
-          es: 'Imagen de clase de retrato',
-        },
-        title: 'Portrait Class',
-      },
-      {
-        filename: 'collage-class.jpg',
-        url: 'https://picsum.photos/800/600',
-        alt: {
-          en: 'Collage class image',
-          es: 'Imagen de clase de collage',
-        },
-        title: 'Collage Class',
-      },
-      // Gallery images
-      {
-        filename: 'gallery-1.jpg',
-        url: 'https://picsum.photos/800/600',
-        alt: {
-          en: 'Art class gallery 1',
-          es: 'Galería de clase de arte 1',
-        },
-        title: 'Gallery Image 1',
-      },
-      {
-        filename: 'gallery-2.jpg',
-        url: 'https://picsum.photos/800/600',
-        alt: {
-          en: 'Art class gallery 2',
-          es: 'Galería de clase de arte 2',
-        },
-        title: 'Gallery Image 2',
-      },
-      {
-        filename: 'gallery-3.jpg',
-        url: 'https://picsum.photos/800/600',
-        alt: {
-          en: 'Art class gallery 3',
-          es: 'Galería de clase de arte 3',
-        },
-        title: 'Gallery Image 3',
-      },
-      {
-        filename: 'instructor-maria.jpg',
-        url: 'https://avatar.iran.liara.run/public/girl',
-        alt: {
-          en: 'María García photo',
-          es: 'Foto de María García',
-        },
-        title: 'María García',
-      },
-      {
-        filename: 'instructor-carlos.jpg',
-        url: 'https://avatar.iran.liara.run/public/boy',
-        alt: {
-          en: 'Carlos Rodríguez photo',
-          es: 'Foto de Carlos Rodríguez',
-        },
-        title: 'Carlos Rodríguez',
-      },
-    ]
+    const createdMedia: any[] = []
 
-    const createdMedia = []
+    if (shouldDownloadImages) {
+      console.log('📥 Media directory empty, downloading images...')
 
-    for (const { filename, url, alt, title } of mediaFiles) {
-      try {
-        console.log(`📥 Fetching image from ${url}...`)
-        const imageBuffer = await fetchImageFromUrl(url)
+      for (const { filename, url, alt, title } of mediaFiles) {
+        try {
+          console.log(`  📥 Fetching: ${title}...`)
+          const imageBuffer = await fetchImageFromUrl(url)
 
-        const media = await payload.create({
-          collection: 'media',
-          data: { alt: alt.en },
-          file: {
-            data: imageBuffer,
-            mimetype: 'image/jpeg',
-            name: filename,
-            size: imageBuffer.length,
-          },
-          locale: 'en',
-        })
+          const media = await payload.create({
+            collection: 'media',
+            data: { alt: alt.en },
+            file: {
+              data: imageBuffer,
+              mimetype: 'image/jpeg',
+              name: filename,
+              size: imageBuffer.length,
+            },
+            locale: 'en',
+          })
 
-        await payload.update({
-          collection: 'media',
-          id: media.id,
-          data: { alt: alt.es },
-          locale: 'es',
-        })
+          await payload.update({
+            collection: 'media',
+            id: media.id,
+            data: { alt: alt.es },
+            locale: 'es',
+          })
 
-        createdMedia.push(media)
-        console.log(`✅ Created media: ${title}`)
-      } catch (error) {
-        console.error(`❌ Failed to create media ${title}:`, error)
+          createdMedia.push(media)
+          console.log(`  ✅ Created: ${title}`)
+        } catch (error) {
+          console.error(`  ❌ Failed to create ${title}:`, error)
+        }
+      }
+    } else {
+      console.log(`📁 Found ${existingImages.length} existing images, reusing them...`)
+
+      for (const { filename, alt, title } of mediaFiles) {
+        try {
+          // Find existing file by name pattern (e.g., "ceramic-pot" in "ceramic-pot-abc123.jpg")
+          const baseFilename = filename.replace('.jpg', '')
+          const existingFile = existingImages.find((f) => f.includes(baseFilename))
+
+          if (existingFile) {
+            const filePath = path.join(mediaDir, existingFile)
+            const imageBuffer = fs.readFileSync(filePath)
+
+            const media = await payload.create({
+              collection: 'media',
+              data: { alt: alt.en },
+              file: {
+                data: imageBuffer,
+                mimetype: 'image/jpeg',
+                name: existingFile,
+                size: imageBuffer.length,
+              },
+              locale: 'en',
+            })
+
+            await payload.update({
+              collection: 'media',
+              id: media.id,
+              data: { alt: alt.es },
+              locale: 'es',
+            })
+
+            createdMedia.push(media)
+            console.log(`  ✅ Reused: ${title} (${existingFile})`)
+          } else {
+            // File doesn't exist locally, download it
+            console.log(`  📥 Downloading missing: ${title}...`)
+            const fileConfig = mediaFiles.find((m) => m.filename === filename)
+            if (fileConfig) {
+              const imageBuffer = await fetchImageFromUrl(fileConfig.url)
+
+              const media = await payload.create({
+                collection: 'media',
+                data: { alt: alt.en },
+                file: {
+                  data: imageBuffer,
+                  mimetype: 'image/jpeg',
+                  name: filename,
+                  size: imageBuffer.length,
+                },
+                locale: 'en',
+              })
+
+              await payload.update({
+                collection: 'media',
+                id: media.id,
+                data: { alt: alt.es },
+                locale: 'es',
+              })
+
+              createdMedia.push(media)
+              console.log(`  ✅ Downloaded: ${title}`)
+            }
+          }
+        } catch (error) {
+          console.error(`  ❌ Failed to create ${title}:`, error)
+        }
       }
     }
+
+    console.log(`✅ Created ${createdMedia.length} media files`)
 
     // ======================
     // 3. CREATE TAGS
@@ -199,51 +246,26 @@ async function seed() {
     console.log('\n📋 Step 3: Creating tags...')
 
     const tagsData = [
-      {
-        name: { en: 'Kids & Family', es: 'Niños y Familia' },
-        slug: 'kids-family',
-        color: '#FF6B9D',
-      },
-      {
-        name: { en: 'Wine', es: 'Vino' },
-        slug: 'wine',
-        color: '#9C27B0',
-      },
-      {
-        name: { en: 'Ceramics - Painting', es: 'Cerámica - Pintura' },
-        slug: 'ceramics-painting',
-        color: '#8D6E63',
-      },
-      {
-        name: { en: 'Ceramics - Hand Building', es: 'Cerámica - Construcción Manual' },
-        slug: 'ceramics-hand-building',
-        color: '#795548',
-      },
-      {
-        name: { en: 'Painting', es: 'Pintura' },
-        slug: 'painting',
-        color: '#FF9800',
-      },
+      { name: { en: 'Kids & Family', es: 'Niños y Familia' }, slug: 'kids-family', color: '#FF6B9D' },
+      { name: { en: 'Wine & Paint', es: 'Vino y Pintura' }, slug: 'wine-paint', color: '#9C27B0' },
+      { name: { en: 'Ceramics', es: 'Cerámica' }, slug: 'ceramics', color: '#8D6E63' },
+      { name: { en: 'Wheel Throwing', es: 'Torno' }, slug: 'wheel-throwing', color: '#795548' },
+      { name: { en: 'Hand Building', es: 'Construcción Manual' }, slug: 'hand-building', color: '#A1887F' },
+      { name: { en: 'Courses', es: 'Cursos' }, slug: 'courses', color: '#3B82F6' },
     ]
 
-    const createdTags = []
+    const createdTags: any[] = []
     for (const tagData of tagsData) {
       const tag = await payload.create({
         collection: 'tags',
-        data: {
-          name: tagData.name.en,
-          slug: tagData.slug,
-          color: tagData.color,
-        },
+        data: { name: tagData.name.en, slug: tagData.slug, color: tagData.color },
         locale: 'en',
       })
 
       await payload.update({
         collection: 'tags',
         id: tag.id,
-        data: {
-          name: tagData.name.es,
-        },
+        data: { name: tagData.name.es },
         locale: 'es',
       })
 
@@ -258,40 +280,34 @@ async function seed() {
 
     const instructors = [
       {
-        name: 'María García',
-        slug: 'maria-garcia',
+        name: 'Elena Martínez',
+        slug: 'elena-martinez',
         bio: {
-          en: 'Professional watercolor artist with 15 years of teaching experience. Specializes in landscapes and botanical art.',
-          es: 'Artista profesional de acuarela con 15 años de experiencia docente. Se especializa en paisajes y arte botánico.',
+          en: 'Master ceramicist with 20 years of experience. Specializes in wheel throwing and traditional Spanish pottery techniques.',
+          es: 'Ceramista maestra con 20 años de experiencia. Se especializa en torno y técnicas tradicionales de cerámica española.',
         },
-        email: 'maria@bizcocho.art',
+        email: 'elena@bizcocho.art',
         phone: '+34 612 345 678',
-        specialties: {
-          en: 'Watercolor, Botanical Art, Landscapes',
-          es: 'Acuarela, Arte Botánico, Paisajes',
-        },
-        photo: createdMedia[7]?.id, // María García photo
+        specialties: { en: 'Wheel Throwing, Glazing, Spanish Pottery', es: 'Torno, Esmaltado, Cerámica Española' },
+        photo: createdMedia[7]?.id,
         isActive: true,
       },
       {
-        name: 'Carlos Rodríguez',
-        slug: 'carlos-rodriguez',
+        name: 'Pablo Sánchez',
+        slug: 'pablo-sanchez',
         bio: {
-          en: 'Contemporary artist and instructor focusing on abstract techniques and modern art. Exhibited internationally.',
-          es: 'Artista e instructor contemporáneo enfocado en técnicas abstractas y arte moderno. Ha expuesto internacionalmente.',
+          en: 'Contemporary ceramic artist focusing on hand-building and sculptural pieces. Has exhibited in galleries across Europe.',
+          es: 'Artista cerámico contemporáneo enfocado en construcción manual y piezas escultóricas. Ha expuesto en galerías de toda Europa.',
         },
-        email: 'carlos@bizcocho.art',
+        email: 'pablo@bizcocho.art',
         phone: '+34 623 456 789',
-        specialties: {
-          en: 'Abstract Art, Acrylics, Mixed Media',
-          es: 'Arte Abstracto, Acrílicos, Técnica Mixta',
-        },
-        photo: createdMedia[8]?.id, // Carlos Rodríguez photo
+        specialties: { en: 'Hand Building, Sculpture, Contemporary Ceramics', es: 'Construcción Manual, Escultura, Cerámica Contemporánea' },
+        photo: createdMedia[8]?.id,
         isActive: true,
       },
     ]
 
-    const createdInstructors = []
+    const createdInstructors: any[] = []
     for (const instructorData of instructors) {
       const instructor = await payload.create({
         collection: 'instructors',
@@ -311,10 +327,7 @@ async function seed() {
       await payload.update({
         collection: 'instructors',
         id: instructor.id,
-        data: {
-          bio: instructorData.bio.es,
-          specialties: instructorData.specialties.es,
-        },
+        data: { bio: instructorData.bio.es, specialties: instructorData.specialties.es },
         locale: 'es',
       })
 
@@ -323,365 +336,348 @@ async function seed() {
     }
 
     // ======================
-    // 4. CLEAR OLD CLASSES
+    // 5. CREATE CLASSES
     // ======================
-    console.log('\n📋 Step 4: Clearing old data...')
+    console.log('\n📋 Step 5: Creating classes...')
 
-    const oldClasses = await payload.find({ collection: 'class-templates', limit: 100 })
-    for (const cls of oldClasses.docs) {
-      await payload.delete({ collection: 'class-templates', id: cls.id })
+    // Helper: Get next occurrence of a specific weekday
+    function getNextWeekday(dayOfWeek: number, weeksFromNow: number = 1): Date {
+      const date = new Date()
+      date.setDate(date.getDate() + weeksFromNow * 7)
+      while (date.getDay() !== dayOfWeek) {
+        date.setDate(date.getDate() + 1)
+      }
+      return date
     }
-    console.log(`🗑️  Deleted ${oldClasses.docs.length} old class templates`)
 
-    // ======================
-    // 5. CREATE ONE-TIME CLASSES
-    // ======================
-    console.log('\n📋 Step 5: Creating one-time classes...')
-
-    const oneTimeClasses = [
-      {
-        title: { en: 'Watercolor Basics', es: 'Fundamentos de Acuarela' },
-        slug: { en: 'watercolor-basics', es: 'fundamentos-acuarela' },
-        description: {
-          en: 'Learn the fundamentals of watercolor painting in this beginner-friendly class.',
-          es: 'Aprende los fundamentos de la pintura con acuarela en esta clase para principiantes.',
-        },
+    // --- CLASS 1: One-time - "Mug Madness" ---
+    console.log('\n  Creating Class 1: Mug Madness (one-time)...')
+    const mugClass = await payload.create({
+      collection: 'classes',
+      data: {
+        title: 'Mug Madness',
+        slug: 'mug-madness',
+        description: 'Create your own unique coffee mug from scratch! Learn hand-building techniques to craft a mug that reflects your personality. Glazing included in a follow-up firing.',
         classType: 'one-time',
-        instructor: createdInstructors[0].id,
-        featuredImage: createdMedia[0]?.id,
-        gallery: [createdMedia[4]?.id, createdMedia[5]?.id, createdMedia[6]?.id].filter(Boolean),
+        instructor: createdInstructors[1].id,
+        featuredImage: createdMedia[2]?.id,
+        gallery: [createdMedia[4]?.id, createdMedia[5]?.id].filter(Boolean),
         priceCents: 4500,
         currency: 'eur',
-        durationMinutes: 180,
+        durationMinutes: 150,
         maxCapacity: 8,
-        location: { en: 'Studio A', es: 'Estudio A' },
-        tags: [createdTags[4].id], // Painting
-        isPublished: true,
-      },
-      {
-        title: { en: 'Abstract Acrylics Workshop', es: 'Taller de Acrílicos Abstractos' },
-        slug: { en: 'abstract-acrylics', es: 'acrilicos-abstractos' },
-        description: {
-          en: 'Unleash your creativity with abstract acrylic painting techniques.',
-          es: 'Libera tu creatividad con técnicas de pintura acrílica abstracta.',
-        },
-        classType: 'one-time',
-        instructor: createdInstructors[1].id,
-        featuredImage: createdMedia[1]?.id,
-        gallery: [createdMedia[5]?.id, createdMedia[6]?.id].filter(Boolean),
-        priceCents: 5500,
-        currency: 'eur',
-        durationMinutes: 180,
-        maxCapacity: 6,
-        location: { en: 'Studio B', es: 'Estudio B' },
-        tags: [createdTags[4].id], // Painting
-        isPublished: true,
-      },
-    ]
-
-    const createdOneTimeClasses = []
-    for (const classData of oneTimeClasses) {
-      const cls = await payload.create({
-        collection: 'class-templates',
-        data: {
-          title: classData.title.en,
-          slug: classData.slug.en,
-          description: classData.description.en,
-          classType: classData.classType as 'one-time' | 'recurring' | 'membership-template',
-          instructor: classData.instructor,
-          featuredImage: classData.featuredImage,
-          gallery: classData.gallery || [],
-          priceCents: classData.priceCents,
-          currency: classData.currency,
-          durationMinutes: classData.durationMinutes,
-          maxCapacity: classData.maxCapacity,
-          location: classData.location.en,
-          tags: classData.tags,
-          isPublished: classData.isPublished,
-        },
-        locale: 'en',
-      })
-
-      await payload.update({
-        collection: 'class-templates',
-        id: cls.id,
-        data: {
-          title: classData.title.es,
-          slug: classData.slug.es,
-          description: classData.description.es,
-          location: classData.location.es,
-        },
-        locale: 'es',
-      })
-
-      createdOneTimeClasses.push(cls)
-      console.log(`✅ Created one-time class: ${classData.title.en}`)
-
-      // Create 1-4 random class sessions for this class
-      const numberOfSessions = Math.floor(Math.random() * 4) + 1 // Random number between 1-4
-      const baseDate = new Date()
-      baseDate.setDate(baseDate.getDate() + 7) // Start 1 week from now
-
-      for (let i = 0; i < numberOfSessions; i++) {
-        // Create sessions on different days (spread over next few weeks)
-        const daysOffset = i * 7 + Math.floor(Math.random() * 3) // Weekly-ish, with some variation
-        const sessionDate = new Date(baseDate)
-        sessionDate.setDate(baseDate.getDate() + daysOffset)
-        sessionDate.setHours(14 + Math.floor(Math.random() * 4), 0, 0, 0) // Between 14:00-17:00
-
-        const instanceEnd = new Date(sessionDate.getTime() + classData.durationMinutes * 60000)
-
-        await payload.create({
-          collection: 'class-sessions',
-          data: {
-            classTemplate: cls.id,
-            startDateTime: sessionDate.toISOString(),
-            endDateTime: instanceEnd.toISOString(),
-            timezone: 'Europe/Madrid',
-            status: 'scheduled',
-            availableSpots: classData.maxCapacity,
-          },
-        })
-        console.log(`  📅 Created session ${i + 1}/${numberOfSessions} for ${sessionDate.toLocaleString('es-ES')}`)
-      }
-    }
-
-    // ======================
-    // 6. CREATE RECURRING CLASS
-    // ======================
-    console.log('\n📋 Step 6: Creating recurring class...')
-
-    const recurringClass = await payload.create({
-      collection: 'class-templates',
-      data: {
-        title: 'Paint & Drink Wine',
-        slug: 'paint-drink-wine',
-        description:
-          'Relax and paint while enjoying a glass of wine. Perfect for unwinding after work!',
-        classType: 'recurring',
-        instructor: createdInstructors[1].id,
-        featuredImage: createdMedia[1]?.id,
-        priceCents: 3500,
-        currency: 'eur',
-        durationMinutes: 120,
-        maxCapacity: 12,
-        location: 'Wine Bar Studio',
-        tags: [createdTags[1].id, createdTags[4].id], // Wine + Painting
+        location: 'Studio A - Hand Building Room',
+        tags: [createdTags[2].id, createdTags[4].id], // Ceramics, Hand Building
         isPublished: true,
       },
       locale: 'en',
     })
 
     await payload.update({
-      collection: 'class-templates',
-      id: recurringClass.id,
+      collection: 'classes',
+      id: mugClass.id,
       data: {
-        title: 'Pintar y Beber Vino',
-        slug: 'pintar-beber-vino',
-        description:
-          '¡Relájate y pinta mientras disfrutas de una copa de vino! ¡Perfecto para relajarse después del trabajo!',
-        location: 'Estudio del Bar de Vinos',
+        title: 'Locura de Tazas',
+        slug: 'locura-de-tazas',
+        description: '¡Crea tu propia taza de café única desde cero! Aprende técnicas de construcción manual para crear una taza que refleje tu personalidad. El esmaltado está incluido en una cocción posterior.',
+        location: 'Estudio A - Sala de Construcción Manual',
       },
       locale: 'es',
     })
+    console.log(`  ✅ Created: Mug Madness`)
 
-    console.log(`✅ Created recurring class: Paint & Drink Wine`)
+    // Create 2 sessions for Mug Madness (manual - one-time classes don't auto-generate)
+    const mugSession1 = getNextWeekday(6, 1) // Next Saturday
+    mugSession1.setHours(10, 0, 0, 0)
+    const mugSession2 = getNextWeekday(6, 2) // Saturday after
+    mugSession2.setHours(10, 0, 0, 0)
 
-    // Add recurrence pattern as array field (every Thursday at 18:00)
-    const recurrenceStartDate = new Date()
-    recurrenceStartDate.setDate(recurrenceStartDate.getDate() + 14) // Start 2 weeks from now
-    const recurrenceEndDate = new Date(recurrenceStartDate)
-    recurrenceEndDate.setMonth(recurrenceEndDate.getMonth() + 3) // End 3 months later
-
-    await payload.update({
-      collection: 'class-templates',
-      id: recurringClass.id,
-      data: {
-        recurrencePatterns: [
-          {
-            frequency: 'weekly',
-            daysOfWeek: ['4'], // Thursday
-            startTime: '18:00',
-            startDate: recurrenceStartDate.toISOString(),
-            endDate: recurrenceEndDate.toISOString(),
-            timezone: 'Europe/Madrid',
-            isActive: true,
-          },
-        ],
-      },
-    })
-
-    console.log(`  🔁 Added recurrence pattern: Every Thursday at 18:00`)
-
-    // Generate 1-4 random instances
-    const numberOfRecurringSessions = Math.floor(Math.random() * 4) + 1
-    const thursdays = []
-    const patternStart = new Date()
-    patternStart.setDate(patternStart.getDate() + 14) // Start 2 weeks from now
-    // Find next Thursday
-    while (patternStart.getDay() !== 4) {
-      patternStart.setDate(patternStart.getDate() + 1)
-    }
-    for (let i = 0; i < numberOfRecurringSessions; i++) {
-      const thursday = new Date(patternStart)
-      thursday.setDate(thursday.getDate() + i * 7)
-      thursday.setHours(18, 0, 0, 0)
-      thursdays.push(thursday)
-    }
-
-    for (const thursday of thursdays) {
-      const instanceEnd = new Date(thursday.getTime() + 120 * 60000)
+    for (const sessionDate of [mugSession1, mugSession2]) {
       await payload.create({
-        collection: 'class-sessions',
+        collection: 'sessions',
         data: {
-          classTemplate: recurringClass.id,
-          startDateTime: thursday.toISOString(),
-          endDateTime: instanceEnd.toISOString(),
+          sessionType: 'class',
+          class: mugClass.id,
+          startDateTime: sessionDate.toISOString(),
           timezone: 'Europe/Madrid',
           status: 'scheduled',
-          availableSpots: 12,
+          availableSpots: 8,
         },
       })
     }
-    console.log(`  📅 Generated ${thursdays.length} recurring instances`)
+    console.log(`  📅 Created 2 sessions for Mug Madness`)
 
-    // ======================
-    // 7. CREATE COURSE
-    // ======================
-    console.log('\n📋 Step 7: Creating course...')
-
-    const courseTemplate = await payload.create({
-      collection: 'class-templates',
+    // --- CLASS 2: One-time - "Tiny Treasures" (Kids) ---
+    console.log('\n  Creating Class 2: Tiny Treasures (one-time, kids)...')
+    const kidsClass = await payload.create({
+      collection: 'classes',
       data: {
-        title: 'Ceramics Techniques',
-        slug: 'ceramics-techniques',
-        description: 'Learn hand-building, wheel throwing, and glazing techniques.',
-        classType: 'membership-template',
+        title: 'Tiny Treasures - Kids Clay Workshop',
+        slug: 'tiny-treasures-kids',
+        description: 'A fun introduction to clay for children ages 6-12! Kids will create small animals, beads, and decorations while learning basic hand-building skills. Parent supervision welcome.',
+        classType: 'one-time',
         instructor: createdInstructors[0].id,
         featuredImage: createdMedia[2]?.id,
-        priceCents: 3000,
+        gallery: [createdMedia[5]?.id, createdMedia[6]?.id].filter(Boolean),
+        priceCents: 3500,
         currency: 'eur',
-        durationMinutes: 120,
+        durationMinutes: 90,
         maxCapacity: 10,
-        location: 'Ceramics Studio',
-        tags: [createdTags[3].id], // Ceramics - Hand Building
+        location: 'Studio B - Family Room',
+        tags: [createdTags[0].id, createdTags[2].id], // Kids & Family, Ceramics
         isPublished: true,
       },
       locale: 'en',
     })
 
     await payload.update({
-      collection: 'class-templates',
-      id: courseTemplate.id,
+      collection: 'classes',
+      id: kidsClass.id,
       data: {
-        title: 'Técnicas de Cerámica',
-        slug: 'tecnicas-ceramica',
-        description: 'Aprende técnicas de construcción manual, torno y esmaltado.',
-        location: 'Estudio de Cerámica',
+        title: 'Pequeños Tesoros - Taller de Arcilla para Niños',
+        slug: 'pequenos-tesoros-ninos',
+        description: '¡Una divertida introducción a la arcilla para niños de 6 a 12 años! Los niños crearán pequeños animales, cuentas y decoraciones mientras aprenden habilidades básicas de construcción manual. Supervisión de padres bienvenida.',
+        location: 'Estudio B - Sala Familiar',
       },
       locale: 'es',
     })
+    console.log(`  ✅ Created: Tiny Treasures`)
 
-    console.log(`✅ Created membership template: Ceramics Techniques`)
+    // Create 3 sessions for Tiny Treasures
+    const kidsSession1 = getNextWeekday(0, 1) // Next Sunday
+    kidsSession1.setHours(11, 0, 0, 0)
+    const kidsSession2 = getNextWeekday(0, 2)
+    kidsSession2.setHours(11, 0, 0, 0)
+    const kidsSession3 = getNextWeekday(0, 3)
+    kidsSession3.setHours(11, 0, 0, 0)
 
-    const membership = await payload.create({
-      collection: 'memberships',
-      data: {
-        title: 'Ceramics for Novices - Monthly Membership',
-        slug: 'ceramics-novices-monthly',
-        description:
-          'Monthly subscription giving access to ceramics classes every Tuesday and Wednesday at 20:00.',
-        classTemplates: [courseTemplate.id],
-        featuredImage: createdMedia[2]?.id,
-        monthlyPriceCents: 12000,
-        currency: 'eur',
-        billingCycle: 'monthly',
-        maxEnrollments: 10,
-        tags: [createdTags[3].id], // Ceramics - Hand Building
-        isPublished: true,
-      },
-      locale: 'en',
-    })
-
-    await payload.update({
-      collection: 'memberships',
-      id: membership.id,
-      data: {
-        title: 'Cerámica para Principiantes - Membresía Mensual',
-        slug: 'ceramica-principiantes-mensual',
-        description:
-          'Suscripción mensual que da acceso a clases de cerámica todos los martes y miércoles a las 20:00.',
-      },
-      locale: 'es',
-    })
-
-    console.log(`✅ Created membership: Ceramics for Novices`)
-
-    // Generate 1-4 random membership sessions
-    const numberOfMembershipSessions = Math.floor(Math.random() * 4) + 1
-    const membershipSessions = []
-    const membershipStart = new Date()
-    membershipStart.setDate(membershipStart.getDate() + 14) // Start 2 weeks from now
-    // Find next Tuesday
-    while (membershipStart.getDay() !== 2) {
-      membershipStart.setDate(membershipStart.getDate() + 1)
-    }
-
-    for (let i = 0; i < numberOfMembershipSessions; i++) {
-      const date = new Date(membershipStart)
-      // Alternate between Tuesday and Wednesday, spreading over weeks
-      const daysToAdd = i * 7 + (i % 2) // Tuesday, then Wednesday next week, etc.
-      date.setDate(date.getDate() + daysToAdd)
-      date.setHours(20, 0, 0, 0)
-      const instanceEnd = new Date(date.getTime() + 120 * 60000)
-
-      const instance = await payload.create({
-        collection: 'class-sessions',
+    for (const sessionDate of [kidsSession1, kidsSession2, kidsSession3]) {
+      await payload.create({
+        collection: 'sessions',
         data: {
-          classTemplate: courseTemplate.id,
-          startDateTime: date.toISOString(),
-          endDateTime: instanceEnd.toISOString(),
+          sessionType: 'class',
+          class: kidsClass.id,
+          startDateTime: sessionDate.toISOString(),
           timezone: 'Europe/Madrid',
           status: 'scheduled',
           availableSpots: 10,
         },
       })
-      membershipSessions.push(instance)
     }
+    console.log(`  📅 Created 3 sessions for Tiny Treasures`)
 
-    console.log(`  📅 Generated ${membershipSessions.length} membership sessions`)
+    // --- CLASS 3: Recurring - "Wheel Therapy Tuesdays" ---
+    console.log('\n  Creating Class 3: Wheel Therapy Tuesdays (recurring)...')
 
-    // Create membership schedule
-    const scheduleStart = new Date()
-    scheduleStart.setDate(scheduleStart.getDate() + 14)
-    const scheduleEnd = new Date(scheduleStart)
-    scheduleEnd.setMonth(scheduleEnd.getMonth() + 1) // 1 month duration
+    // Calculate recurrence dates
+    const tuesdayStart = getNextWeekday(2, 1) // Next Tuesday
+    tuesdayStart.setHours(0, 0, 0, 0)
+    const tuesdayEnd = new Date(tuesdayStart)
+    tuesdayEnd.setMonth(tuesdayEnd.getMonth() + 3) // 3 months of sessions
 
-    await payload.create({
-      collection: 'membership-schedules',
+    // Create recurring class first (schedule only works after save)
+    const wheelClass = await payload.create({
+      collection: 'classes',
       data: {
-        membership: membership.id,
-        classSessions: membershipSessions.map((i) => i.id),
-        startDate: scheduleStart.toISOString(),
-        endDate: scheduleEnd.toISOString(),
-        isActive: true,
+        title: 'Wheel Therapy Tuesdays',
+        slug: 'wheel-therapy-tuesdays',
+        description: 'Unwind after work with the meditative art of wheel throwing. Each session focuses on centering, pulling, and shaping clay. All levels welcome - beginners will start with cylinders, experienced throwers can work on personal projects.',
+        classType: 'recurring',
+        instructor: createdInstructors[0].id,
+        featuredImage: createdMedia[1]?.id,
+        gallery: [createdMedia[4]?.id, createdMedia[6]?.id].filter(Boolean),
+        priceCents: 4000,
+        currency: 'eur',
+        durationMinutes: 120,
+        maxCapacity: 6,
+        location: 'Studio C - Wheel Room',
+        tags: [createdTags[2].id, createdTags[3].id],
+        isPublished: true,
+      },
+      locale: 'en',
+    })
+
+    // Now update with schedule to trigger session generation
+    await payload.update({
+      collection: 'classes',
+      id: wheelClass.id,
+      data: {
+        schedule: {
+          startDate: tuesdayStart.toISOString(),
+          endDate: tuesdayEnd.toISOString(),
+          recurrence: 'weekly',
+          daysOfWeek: ['2'], // Tuesday
+          startTime: '18:30',
+          timezone: 'Europe/Madrid',
+        },
       },
     })
 
-    console.log(`  📋 Created membership schedule`)
+    await payload.update({
+      collection: 'classes',
+      id: wheelClass.id,
+      data: {
+        title: 'Martes de Terapia con Torno',
+        slug: 'martes-terapia-torno',
+        description: 'Relájate después del trabajo con el arte meditativo del torno. Cada sesión se enfoca en centrar, estirar y dar forma a la arcilla. Todos los niveles son bienvenidos - los principiantes comenzarán con cilindros, los torneros experimentados pueden trabajar en proyectos personales.',
+        location: 'Estudio C - Sala de Tornos',
+      },
+      locale: 'es',
+    })
 
-    console.log('\n🎉 Comprehensive seed completed successfully!')
+    // Check if sessions were auto-generated
+    const wheelSessions = await payload.find({
+      collection: 'sessions',
+      where: { class: { equals: wheelClass.id } },
+      limit: 100,
+    })
+
+    if (wheelSessions.docs.length === 0) {
+      console.log(`  ⚠️  Hook didn't generate sessions, creating manually...`)
+      // Manual fallback: generate sessions ourselves
+      let currentDate = new Date(tuesdayStart)
+      let sessionCount = 0
+      while (currentDate <= tuesdayEnd) {
+        if (currentDate.getDay() === 2) { // Tuesday
+          const sessionStart = new Date(currentDate)
+          sessionStart.setHours(18, 30, 0, 0)
+          await payload.create({
+            collection: 'sessions',
+            data: {
+              sessionType: 'class',
+              class: wheelClass.id,
+              startDateTime: sessionStart.toISOString(),
+              timezone: 'Europe/Madrid',
+              status: 'scheduled',
+              availableSpots: 6,
+            },
+          })
+          sessionCount++
+        }
+        currentDate.setDate(currentDate.getDate() + 1)
+      }
+      console.log(`  📅 Manually created ${sessionCount} sessions for Wheel Therapy Tuesdays`)
+    } else {
+      console.log(`  ✅ Created: Wheel Therapy Tuesdays (${wheelSessions.docs.length} sessions auto-generated)`)
+    }
+
+    // ======================
+    // 6. CREATE COURSE
+    // ======================
+    console.log('\n📋 Step 6: Creating course...')
+
+    // Calculate course dates (every Monday for a month)
+    const mondayStart = getNextWeekday(1, 1) // Next Monday
+    mondayStart.setHours(0, 0, 0, 0)
+    const mondayEnd = new Date(mondayStart)
+    mondayEnd.setDate(mondayEnd.getDate() + 28) // 4 weeks (5 Mondays typically)
+
+    // Create course first (schedule only triggers on update)
+    const potCourse = await payload.create({
+      collection: 'courses',
+      data: {
+        title: 'Paint Your Own Pot on Mondays',
+        slug: 'paint-your-own-pot-mondays',
+        description: 'A 4-week journey into the colorful world of ceramic glazing! Each Monday, you\'ll learn different techniques: underglaze painting, majolica, wax resist, and layering. By the end, you\'ll have 4 beautifully decorated pieces ready for the kiln.',
+        instructor: createdInstructors[1].id,
+        featuredImage: createdMedia[0]?.id,
+        gallery: [createdMedia[4]?.id, createdMedia[5]?.id, createdMedia[6]?.id].filter(Boolean),
+        priceCents: 16000,
+        currency: 'eur',
+        maxCapacity: 8,
+        durationMinutes: 150,
+        location: 'Studio A - Glazing Station',
+        tags: [createdTags[2].id, createdTags[5].id],
+        isPublished: true,
+      },
+      locale: 'en',
+    })
+
+    // Update with schedule to trigger session generation
+    await payload.update({
+      collection: 'courses',
+      id: potCourse.id,
+      data: {
+        schedule: {
+          startDate: mondayStart.toISOString(),
+          endDate: mondayEnd.toISOString(),
+          recurrence: 'weekly',
+          daysOfWeek: ['1'], // Monday
+          startTime: '17:00',
+          timezone: 'Europe/Madrid',
+        },
+      },
+    })
+
+    // Spanish translation
+    await payload.update({
+      collection: 'courses',
+      id: potCourse.id,
+      data: {
+        title: 'Pinta Tu Propia Maceta los Lunes',
+        slug: 'pinta-tu-maceta-lunes',
+        description: '¡Un viaje de 4 semanas al colorido mundo del esmaltado cerámico! Cada lunes aprenderás diferentes técnicas: pintura con engobes, mayólica, resistencia con cera y capas. Al final, tendrás 4 piezas bellamente decoradas listas para el horno.',
+        location: 'Estudio A - Estación de Esmaltado',
+      },
+      locale: 'es',
+    })
+
+    // Check if sessions were auto-generated
+    const courseSessions = await payload.find({
+      collection: 'sessions',
+      where: { course: { equals: potCourse.id } },
+      limit: 100,
+    })
+
+    if (courseSessions.docs.length === 0) {
+      console.log(`  ⚠️  Hook didn't generate sessions, creating manually...`)
+      // Manual fallback: generate course sessions ourselves
+      let currentDate = new Date(mondayStart)
+      let sessionCount = 0
+      while (currentDate <= mondayEnd) {
+        if (currentDate.getDay() === 1) { // Monday
+          const sessionStart = new Date(currentDate)
+          sessionStart.setHours(17, 0, 0, 0)
+          await payload.create({
+            collection: 'sessions',
+            data: {
+              sessionType: 'course',
+              course: potCourse.id,
+              startDateTime: sessionStart.toISOString(),
+              timezone: 'Europe/Madrid',
+              status: 'scheduled',
+              availableSpots: 8,
+            },
+          })
+          sessionCount++
+        }
+        currentDate.setDate(currentDate.getDate() + 1)
+      }
+      console.log(`  📅 Manually created ${sessionCount} sessions for Paint Your Own Pot`)
+    } else {
+      console.log(`  ✅ Created: Paint Your Own Pot on Mondays (${courseSessions.docs.length} sessions auto-generated)`)
+    }
+
+    // ======================
+    // SUMMARY
+    // ======================
+    console.log('\n🎉 Seed completed successfully!')
     console.log('\n📊 Summary:')
     console.log(`  ✓ 1 Admin user`)
     console.log(`  ✓ ${createdMedia.length} Media files`)
+    console.log(`  ✓ ${createdTags.length} Tags`)
     console.log(`  ✓ ${createdInstructors.length} Instructors`)
-    console.log(`  ✓ ${createdOneTimeClasses.length} One-time class templates`)
-    console.log(`  ✓ 1 Recurring class template (Paint & Drink Wine - Thursdays)`)
-    console.log(`  ✓ 1 Membership (Ceramics - Tue & Wed)`)
+    console.log(`  ✓ 3 Classes:`)
+    console.log(`      - Mug Madness (one-time, Saturdays)`)
+    console.log(`      - Tiny Treasures (one-time, Sundays, kids)`)
+    console.log(`      - Wheel Therapy Tuesdays (recurring, every Tuesday)`)
+    console.log(`  ✓ 1 Course:`)
+    console.log(`      - Paint Your Own Pot on Mondays (4 weeks)`)
+
     console.log('\nYou can now:')
-    console.log('  1. Visit http://localhost:4321/admin')
-    console.log('  2. Login with: admin@bizcocho.art / admin123')
-    console.log('  3. Explore Class Templates, Instructors, Class Sessions, Memberships, etc.')
+    console.log('  1. Run: pnpm dev')
+    console.log('  2. Visit: http://localhost:4321/admin')
+    console.log('  3. Login: admin@bizcocho.art / admin123')
   } catch (error) {
     console.error('❌ Error seeding database:', error)
     process.exit(1)

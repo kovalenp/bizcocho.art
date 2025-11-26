@@ -2,12 +2,13 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import type { ClassTemplate, Tag, Media } from '@/payload-types'
+import type { Tag, Media } from '@/payload-types'
 import type { Messages } from '@/i18n/messages'
 import type { Locale } from '@/i18n/config'
+import { type DisplayItem, isClassItem, isCourseItem, getDisplayItemProps } from '@/types/display'
 
 type ClassFilterProps = {
-  classes: ClassTemplate[]
+  classes: DisplayItem[]
   tags: Tag[]
   messages: Messages
   locale: Locale
@@ -17,10 +18,10 @@ export function ClassFilter({ classes, tags, messages, locale }: ClassFilterProp
   const [selectedTag, setSelectedTag] = useState<string | number | null>(null)
 
   const filteredClasses = selectedTag
-    ? classes.filter((cls) => {
-        const classTags = cls.tags as (string | Tag)[]
-        if (!classTags) return false
-        return classTags.some((tag) => {
+    ? classes.filter((item) => {
+        const itemTags = item.data.tags as (string | Tag)[]
+        if (!itemTags) return false
+        return itemTags.some((tag) => {
           const tagId = typeof tag === 'string' ? tag : tag.id
           return tagId === selectedTag
         })
@@ -59,9 +60,13 @@ export function ClassFilter({ classes, tags, messages, locale }: ClassFilterProp
       {/* Class Grid */}
       {filteredClasses.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-          {filteredClasses.map((classItem) => (
-            <ClassCard key={classItem.id} data={classItem} messages={messages} locale={locale} />
-          ))}
+          {filteredClasses.map((item) => {
+            // Create unique key using item type and id to avoid collisions
+            const uniqueKey = `${item.itemType}-${item.data.id}`
+            return (
+              <ClassCard key={uniqueKey} item={item} messages={messages} locale={locale} />
+            )
+          })}
         </div>
       ) : (
         <div className="text-center p-12 bg-gray-50 rounded-lg">
@@ -77,13 +82,19 @@ export function ClassFilter({ classes, tags, messages, locale }: ClassFilterProp
   )
 }
 
-function ClassCard({ data, messages, locale }: { data: ClassTemplate; messages: Messages; locale: Locale }) {
-  const featuredImage = data.featuredImage as Media | null
-  const classTags = (data.tags as Tag[]) || []
+function ClassCard({ item, messages, locale }: { item: DisplayItem; messages: Messages; locale: Locale }) {
+  const props = getDisplayItemProps(item)
+  const featuredImage = props.featuredImage
+  const itemTags = props.tags
+
+  // Use the proper type for link path
+  const linkPath = isCourseItem(item)
+    ? `/${locale}/courses/${props.slug}`
+    : `/${locale}/classes/${props.slug}`
 
   return (
     <Link
-      href={`/${locale}/classes/${data.slug}`}
+      href={linkPath}
       className="group block no-underline bg-gray-50 rounded-lg overflow-hidden hover:bg-primary transition-all duration-300 ease-in-out"
     >
       {featuredImage?.url && (
@@ -91,7 +102,7 @@ function ClassCard({ data, messages, locale }: { data: ClassTemplate; messages: 
           <div className="overflow-hidden h-64 rounded-xl relative">
             <img
               src={featuredImage.url}
-              alt={data.title}
+              alt={props.title}
               className="w-full h-full object-cover transition-transform duration-500 ease-out group-hover:scale-110"
             />
           </div>
@@ -103,30 +114,30 @@ function ClassCard({ data, messages, locale }: { data: ClassTemplate; messages: 
           <div className="flex items-center gap-3">
             {/* Available Slots - Black Pill */}
             <span className="bg-black text-white px-3 py-1 rounded-full text-xs font-medium">
-              {data.maxCapacity || 0} {messages.home.spots}
+              {props.maxCapacity} {messages.home.spots}
             </span>
-            
+
             {/* Price */}
             <span className="text-lg font-medium text-gray-900 group-hover:text-white transition-colors duration-300">
-              €{((data.priceCents || 0) / 100).toFixed(2)}
+              €{(props.priceCents / 100).toFixed(2)}
             </span>
           </div>
 
           {/* Tag - Outlined Pill */}
-          {classTags.length > 0 && (
+          {itemTags.length > 0 && (
             <span className="border border-gray-300 text-gray-600 px-3 py-1 rounded-full text-xs font-medium bg-white">
-              {typeof classTags[0] === 'string' ? classTags[0] : classTags[0].name}
+              {itemTags[0].name}
             </span>
           )}
         </div>
 
         <h3 className="mb-2 text-xl font-medium text-gray-900 group-hover:text-white transition-colors duration-300">
-          {data.title}
+          {props.title}
         </h3>
-        
-        {data.description && (
+
+        {props.description && (
           <p className="text-gray-600 leading-relaxed text-sm line-clamp-3 group-hover:text-white/90 transition-colors duration-300">
-            {data.description}
+            {props.description}
           </p>
         )}
       </div>

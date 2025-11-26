@@ -1,8 +1,8 @@
-import type { ClassTemplate, Tag } from '@/payload-types'
+import type { Class, Tag } from '@/payload-types'
 import type { Messages } from '@/i18n/messages'
 
 type ClassInfoProps = {
-  classTemplate: ClassTemplate
+  classTemplate: Class
   tags: Tag[]
   messages: Messages
 }
