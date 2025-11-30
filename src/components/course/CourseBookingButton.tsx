@@ -3,8 +3,8 @@
 import { useState } from 'react'
 
 type CourseBookingButtonProps = {
-  courseId: number
-  coursePriceCents: number
+  classId: number // unified: always classId
+  priceCents: number
   currency: string
   maxCapacity: number
   availableSpots: number
@@ -20,8 +20,8 @@ type BookingFormData = {
 }
 
 export function CourseBookingButton({
-  courseId,
-  coursePriceCents,
+  classId,
+  priceCents,
   currency,
   maxCapacity,
   availableSpots,
@@ -39,7 +39,7 @@ export function CourseBookingButton({
   const [errorMessage, setErrorMessage] = useState('')
 
   const currencySymbol = currency === 'eur' ? '€' : '$'
-  const pricePerPerson = coursePriceCents / 100
+  const pricePerPerson = priceCents / 100
   const totalPrice = pricePerPerson * formData.numberOfPeople
   const spotsAvailable = availableSpots > 0 ? availableSpots : maxCapacity
 
@@ -49,11 +49,13 @@ export function CourseBookingButton({
     setErrorMessage('')
 
     try {
-      const response = await fetch('/api/checkout/create-course-session', {
+      // Unified checkout API - uses classId, no sessionId for courses
+      const response = await fetch('/api/checkout/create-session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          courseId: courseId.toString(),
+          classId: classId.toString(),
+          // No sessionId - course booking books all sessions
           ...formData,
           locale,
         }),

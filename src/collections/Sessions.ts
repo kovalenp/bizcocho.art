@@ -4,7 +4,7 @@ export const Sessions: CollectionConfig = {
   slug: 'sessions',
   admin: {
     useAsTitle: 'id',
-    defaultColumns: ['id', 'sessionType', 'class', 'course', 'startDateTime', 'status', 'availableSpots'],
+    defaultColumns: ['id', 'sessionType', 'class', 'startDateTime', 'status', 'availableSpots'],
   },
   fields: [
     {
@@ -17,29 +17,17 @@ export const Sessions: CollectionConfig = {
         { label: 'Course', value: 'course' },
       ],
       admin: {
-        description: 'Auto-set based on class/course relationship',
+        description: 'Mirrors the parent class type',
       },
     },
     {
       name: 'class',
       type: 'relationship',
       relationTo: 'classes',
-      required: false,
+      required: true,
       index: true,
       admin: {
-        description: 'The class this session belongs to',
-        condition: (data) => !data.course,
-      },
-    },
-    {
-      name: 'course',
-      type: 'relationship',
-      relationTo: 'courses',
-      required: false,
-      index: true,
-      admin: {
-        description: 'The course this session belongs to',
-        condition: (data) => !data.class,
+        description: 'The class/course this session belongs to',
       },
     },
     {
@@ -84,7 +72,7 @@ export const Sessions: CollectionConfig = {
       required: false,
       min: 0,
       admin: {
-        description: 'Auto-initialized from class/course maxCapacity, updated by bookings',
+        description: 'Auto-initialized from class maxCapacity, updated by bookings',
         position: 'sidebar',
       },
     },

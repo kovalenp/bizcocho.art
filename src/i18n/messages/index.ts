@@ -1,6 +1,7 @@
 import type { Locale } from '../config'
 import { messages as enMessages } from './en'
 import { messages as esMessages } from './es'
+import { logError, logWarn } from '../../lib/logger'
 
 type MessageStructure = {
   common: {
@@ -69,7 +70,7 @@ export type Messages = MessageStructure
 export function getMessages(locale: Locale): Messages {
   const messages = messagesByLocale[locale]
   if (!messages) {
-    console.error(`Messages not found for locale: ${locale}. Falling back to 'en'`)
+    logError('Messages not found for locale, falling back to en', new Error('Locale not found'), { locale })
     return messagesByLocale.en
   }
   return messages
@@ -83,7 +84,7 @@ export function t(messages: Messages, key: string): string {
   for (const k of keys) {
     value = value[k]
     if (value === undefined) {
-      console.warn(`Translation key not found: ${key}`)
+      logWarn('Translation key not found', { key })
       return key
     }
   }

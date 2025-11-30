@@ -3,6 +3,7 @@ import config from '@payload-config'
 import { NextRequest, NextResponse } from 'next/server'
 import Stripe from 'stripe'
 import { sendBookingConfirmationEmail, sendCourseConfirmationEmail } from '@/lib/email'
+import { logError, logInfo, logDebug } from '@/lib/logger'
 
 // Disable body parsing to get raw body for webhook signature verification
 export const runtime = 'nodejs'
@@ -21,7 +22,7 @@ export async function POST(request: NextRequest) {
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET
 
   if (!webhookSecret) {
-    console.error('STRIPE_WEBHOOK_SECRET not configured')
+    logError('STRIPE_WEBHOOK_SECRET not configured', new Error('Missing webhook secret'))
     return NextResponse.json(
       { error: 'Webhook secret not configured' },
       { status: 500 }
@@ -35,7 +36,7 @@ export async function POST(request: NextRequest) {
     const signature = request.headers.get('stripe-signature')
 
     if (!signature) {
-      console.error('Missing stripe-signature header')
+      logError('Missing stripe-signature header', new Error('Missing signature'))
       return NextResponse.json(
         { error: 'Missing stripe-signature header' },
         { status: 400 }
@@ -46,9 +47,9 @@ export async function POST(request: NextRequest) {
     let event: Stripe.Event
     try {
       event = stripe.webhooks.constructEvent(body, signature, webhookSecret)
-      console.log('Webhook signature verified:', event.type)
+      logDebug('Webhook signature verified', { eventType: event.type })
     } catch (err) {
-      console.error('Webhook signature verification failed:', err)
+      logError('Webhook signature verification failed', err)
       return NextResponse.json(
         { error: 'Invalid signature' },
         { status: 400 }
@@ -64,13 +65,13 @@ export async function POST(request: NextRequest) {
 
         // Extract booking metadata
         const bookingId = session.metadata?.bookingId
-        const bookingType = session.metadata?.bookingType || 'class'
-        const sessionId = session.metadata?.sessionId
-        const courseId = session.metadata?.courseId
+        const bookingType = (session.metadata?.bookingType || 'class') as 'class' | 'course'
+        const classId = session.metadata?.classId
+        const sessionIds = session.metadata?.sessionIds // comma-separated
         const locale = (session.metadata?.locale as 'en' | 'es') || 'en'
 
         if (!bookingId) {
-          console.error('No booking ID in session metadata')
+          logError('No booking ID in session metadata', new Error('Missing booking ID'))
           return NextResponse.json(
             { error: 'Missing booking ID' },
             { status: 400 }
@@ -84,7 +85,7 @@ export async function POST(request: NextRequest) {
         })
 
         if (existingBooking?.paymentStatus === 'paid') {
-          console.log('Booking already paid, skipping duplicate webhook:', bookingId)
+          logInfo('Booking already paid, skipping duplicate webhook', { bookingId })
           return NextResponse.json({ received: true }, { status: 200 })
         }
 
@@ -101,62 +102,67 @@ export async function POST(request: NextRequest) {
 
         // Send confirmation email based on booking type
         try {
-          if (bookingType === 'course' && courseId) {
-            // Parse courseId as number (comes from metadata as string)
-            const courseIdNum = parseInt(courseId, 10)
-            if (isNaN(courseIdNum)) {
-              console.error('Invalid course ID in metadata:', courseId)
+          if (!classId) {
+            logError('Missing classId in metadata', new Error('Missing classId'), { bookingId })
+          } else {
+            const classIdNum = parseInt(classId, 10)
+            if (isNaN(classIdNum)) {
+              logError('Invalid class ID in metadata', new Error('Invalid class ID'), { classId })
             } else {
-              // Fetch course and sessions for email
-              const course = await payload.findByID({
-                collection: 'courses',
-                id: courseIdNum,
-                depth: 2,
+              // Fetch the class
+              const classDoc = await payload.findByID({
+                collection: 'classes',
+                id: classIdNum,
+                depth: 1,
               })
 
-              const sessions = await payload.find({
-                collection: 'sessions',
-                where: {
-                  course: { equals: courseIdNum },
-                  status: { equals: 'scheduled' },
-                },
-                sort: 'startDateTime',
-                limit: 100,
-              })
+              if (bookingType === 'course') {
+                // Course enrollment - fetch all booked sessions
+                const sessionIdNums = sessionIds
+                  ? sessionIds.split(',').map((id) => parseInt(id, 10)).filter((id) => !isNaN(id))
+                  : []
 
-              await sendCourseConfirmationEmail({
-                booking,
-                course,
-                sessions: sessions.docs,
-                locale,
-              })
-            }
-          } else if (sessionId) {
-            // Parse sessionId as number (comes from metadata as string)
-            const sessionIdNum = parseInt(sessionId, 10)
-            if (isNaN(sessionIdNum)) {
-              console.error('Invalid session ID in metadata:', sessionId)
-            } else {
-              // Class booking - get session details for email
-              const sessionDoc = await payload.findByID({
-                collection: 'sessions',
-                id: sessionIdNum,
-                depth: 2,
-              })
+                const sessions = await payload.find({
+                  collection: 'sessions',
+                  where: { id: { in: sessionIdNums } },
+                  sort: 'startDateTime',
+                  limit: 100,
+                })
 
-              await sendBookingConfirmationEmail({
-                booking,
-                session: sessionDoc,
-                locale,
-              })
+                await sendCourseConfirmationEmail({
+                  booking,
+                  classDoc,
+                  sessions: sessions.docs,
+                  locale,
+                })
+              } else {
+                // Single class booking - get first session
+                const sessionIdNums = sessionIds
+                  ? sessionIds.split(',').map((id) => parseInt(id, 10)).filter((id) => !isNaN(id))
+                  : []
+
+                if (sessionIdNums.length > 0) {
+                  const sessionDoc = await payload.findByID({
+                    collection: 'sessions',
+                    id: sessionIdNums[0],
+                    depth: 2,
+                  })
+
+                  await sendBookingConfirmationEmail({
+                    booking,
+                    session: sessionDoc,
+                    locale,
+                  })
+                }
+              }
             }
           }
         } catch (emailError) {
-          console.error('Failed to send confirmation email:', emailError)
+          logError('Failed to send confirmation email', emailError, { bookingId, bookingType })
           // Don't fail the webhook if email fails
         }
 
-        console.log('Booking confirmed:', bookingId, 'type:', bookingType)
+        logInfo('Booking confirmed', { bookingId, bookingType })
         break
       }
 
@@ -164,13 +170,11 @@ export async function POST(request: NextRequest) {
         const session = event.data.object as Stripe.Checkout.Session
 
         const bookingId = session.metadata?.bookingId
-        const bookingType = session.metadata?.bookingType || 'class'
-        const sessionId = session.metadata?.sessionId
-        const courseId = session.metadata?.courseId
+        const sessionIds = session.metadata?.sessionIds // comma-separated
         const numberOfPeople = parseInt(session.metadata?.numberOfPeople || '0', 10)
 
         if (!bookingId) {
-          console.error('Missing booking ID in expired session')
+          logError('Missing booking ID in expired session', new Error('Missing booking ID'))
           return NextResponse.json({ received: true }, { status: 200 })
         }
 
@@ -181,7 +185,7 @@ export async function POST(request: NextRequest) {
         }).catch(() => null)
 
         if (!existingBooking) {
-          console.log('Booking already deleted:', bookingId)
+          logInfo('Booking already deleted', { bookingId })
           return NextResponse.json({ received: true }, { status: 200 })
         }
 
@@ -191,20 +195,21 @@ export async function POST(request: NextRequest) {
           id: parseInt(bookingId, 10),
         })
 
-        // Restore available spots based on booking type
-        if (bookingType === 'course' && courseId) {
-          const courseIdNum = parseInt(courseId, 10)
-          if (!isNaN(courseIdNum)) {
-            // Restore spots for all course sessions
+        // Restore available spots for all sessions (unified approach)
+        if (sessionIds && numberOfPeople > 0) {
+          const sessionIdNums = sessionIds
+            .split(',')
+            .map((id) => parseInt(id, 10))
+            .filter((id) => !isNaN(id))
+
+          if (sessionIdNums.length > 0) {
             const sessions = await payload.find({
               collection: 'sessions',
-              where: {
-                course: { equals: courseIdNum },
-              },
+              where: { id: { in: sessionIdNums } },
               limit: 100,
             })
 
-            const updatePromises = sessions.docs.map(sessionDoc => {
+            const updatePromises = sessions.docs.map((sessionDoc) => {
               const currentSpots = sessionDoc.availableSpots || 0
               return payload.update({
                 collection: 'sessions',
@@ -216,41 +221,25 @@ export async function POST(request: NextRequest) {
             })
 
             await Promise.all(updatePromises)
-            console.log('Expired course session, restored spots for', sessions.docs.length, 'sessions')
-          }
-        } else if (sessionId) {
-          const sessionIdNum = parseInt(sessionId, 10)
-          if (!isNaN(sessionIdNum)) {
-            // Restore spots for single class session
-            const sessionDoc = await payload.findByID({
-              collection: 'sessions',
-              id: sessionIdNum,
-            }).catch(() => null)
-
-            if (sessionDoc) {
-              const currentSpots = sessionDoc.availableSpots || 0
-              await payload.update({
-                collection: 'sessions',
-                id: sessionIdNum,
-                data: {
-                  availableSpots: currentSpots + numberOfPeople,
-                },
-              })
-            }
+            logInfo('Expired session, restored spots', {
+              sessionsCount: sessions.docs.length,
+              bookingId,
+              numberOfPeople,
+            })
           }
         }
 
-        console.log('Expired session, booking deleted and spots restored:', bookingId)
+        logInfo('Expired session, booking deleted', { bookingId })
         break
       }
 
       default:
-        console.log('Unhandled event type:', event.type)
+        logDebug('Unhandled event type', { eventType: event.type })
     }
 
     return NextResponse.json({ received: true }, { status: 200 })
   } catch (error) {
-    console.error('Webhook error:', error)
+    logError('Webhook handler failed', error)
     return NextResponse.json(
       { error: 'Webhook handler failed' },
       { status: 500 }

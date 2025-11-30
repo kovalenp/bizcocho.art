@@ -1,4 +1,5 @@
 import type { Payload } from 'payload'
+import { logError } from '../lib/logger'
 
 export type ReservationResult = {
   success: boolean
@@ -7,101 +8,45 @@ export type ReservationResult = {
 }
 
 export type CapacityInfo = {
-  sessionId: string | number
+  sessionId: number
   availableSpots: number
   maxCapacity: number
 }
 
 /**
  * Centralized service for managing session capacity.
- * Handles reservations, confirmations, and releases with proper error handling.
+ * Unified interface - works with arrays of session IDs (1 or many).
  */
 export class CapacityService {
   constructor(private payload: Payload) {}
 
   /**
-   * Reserve spots on a single session (for class bookings).
+   * Reserve spots on one or more sessions.
    * Uses verify-and-rollback pattern to prevent overbooking.
    */
-  async reserveClassSpots(
-    sessionId: string | number,
+  async reserveSpots(
+    sessionIds: number[],
     numberOfPeople: number
   ): Promise<ReservationResult> {
-    try {
-      // Fetch current session state
-      const session = await this.payload.findByID({
-        collection: 'sessions',
-        id: sessionId,
-      })
-
-      if (!session) {
-        return { success: false, error: 'Session not found' }
-      }
-
-      const currentSpots = session.availableSpots ?? 0
-
-      if (numberOfPeople > currentSpots) {
-        return { success: false, error: 'Not enough capacity available' }
-      }
-
-      // Decrement spots
-      const newSpots = currentSpots - numberOfPeople
-
-      await this.payload.update({
-        collection: 'sessions',
-        id: sessionId,
-        data: { availableSpots: newSpots },
-      })
-
-      // Verify update (check for race condition)
-      const verifiedSession = await this.payload.findByID({
-        collection: 'sessions',
-        id: sessionId,
-      })
-
-      if (verifiedSession.availableSpots != null && verifiedSession.availableSpots < 0) {
-        // Rollback
-        await this.payload.update({
-          collection: 'sessions',
-          id: sessionId,
-          data: { availableSpots: verifiedSession.availableSpots + numberOfPeople },
-        })
-        return { success: false, error: 'Race condition detected - please try again' }
-      }
-
-      return { success: true, reservedSpots: numberOfPeople }
-    } catch (error) {
-      console.error('Failed to reserve class spots:', error)
-      return { success: false, error: 'Failed to reserve spots' }
+    if (sessionIds.length === 0) {
+      return { success: false, error: 'No sessions provided' }
     }
-  }
 
-  /**
-   * Reserve spots on all sessions for a course (for course enrollments).
-   * Uses verify-and-rollback pattern to prevent overbooking.
-   */
-  async reserveCourseSpots(
-    courseId: string | number,
-    numberOfPeople: number
-  ): Promise<ReservationResult> {
     try {
-      // Fetch all course sessions
+      // Fetch all sessions
       const sessions = await this.payload.find({
         collection: 'sessions',
-        where: {
-          course: { equals: courseId },
-          status: { equals: 'scheduled' },
-        },
-        limit: 100,
+        where: { id: { in: sessionIds } },
+        limit: sessionIds.length,
       })
 
-      if (sessions.docs.length === 0) {
-        return { success: false, error: 'No sessions available for this course' }
+      if (sessions.docs.length !== sessionIds.length) {
+        return { success: false, error: 'One or more sessions not found' }
       }
 
       // Check minimum capacity across all sessions
       const minAvailable = Math.min(
-        ...sessions.docs.map(s => s.availableSpots ?? 0)
+        ...sessions.docs.map((s) => s.availableSpots ?? 0)
       )
 
       if (numberOfPeople > minAvailable) {
@@ -109,7 +54,7 @@ export class CapacityService {
       }
 
       // Decrement all sessions
-      const updatePromises = sessions.docs.map(session => {
+      const updatePromises = sessions.docs.map((session) => {
         const currentSpots = session.availableSpots ?? 0
         return this.payload.update({
           collection: 'sessions',
@@ -122,20 +67,17 @@ export class CapacityService {
       // Verify no session went negative
       const verifiedSessions = await this.payload.find({
         collection: 'sessions',
-        where: {
-          course: { equals: courseId },
-          status: { equals: 'scheduled' },
-        },
-        limit: 100,
+        where: { id: { in: sessionIds } },
+        limit: sessionIds.length,
       })
 
       const hasNegative = verifiedSessions.docs.some(
-        s => s.availableSpots != null && s.availableSpots < 0
+        (s) => s.availableSpots != null && s.availableSpots < 0
       )
 
       if (hasNegative) {
         // Rollback all
-        const rollbackPromises = verifiedSessions.docs.map(session => {
+        const rollbackPromises = verifiedSessions.docs.map((session) => {
           const currentSpots = session.availableSpots ?? 0
           return this.payload.update({
             collection: 'sessions',
@@ -149,52 +91,25 @@ export class CapacityService {
 
       return { success: true, reservedSpots: numberOfPeople }
     } catch (error) {
-      console.error('Failed to reserve course spots:', error)
+      logError('Failed to reserve spots', error, { sessionIds, numberOfPeople })
       return { success: false, error: 'Failed to reserve spots' }
     }
   }
 
   /**
-   * Release reserved spots on a single session (for class booking cancellation/expiry).
+   * Release reserved spots on one or more sessions.
    */
-  async releaseClassSpots(
-    sessionId: string | number,
-    numberOfPeople: number
-  ): Promise<void> {
-    try {
-      const session = await this.payload.findByID({
-        collection: 'sessions',
-        id: sessionId,
-      }).catch(() => null)
+  async releaseSpots(sessionIds: number[], numberOfPeople: number): Promise<void> {
+    if (sessionIds.length === 0) return
 
-      if (session) {
-        const currentSpots = session.availableSpots ?? 0
-        await this.payload.update({
-          collection: 'sessions',
-          id: sessionId,
-          data: { availableSpots: currentSpots + numberOfPeople },
-        })
-      }
-    } catch (error) {
-      console.error('Failed to release class spots:', error)
-    }
-  }
-
-  /**
-   * Release reserved spots on all course sessions (for course booking cancellation/expiry).
-   */
-  async releaseCourseSpots(
-    courseId: string | number,
-    numberOfPeople: number
-  ): Promise<void> {
     try {
       const sessions = await this.payload.find({
         collection: 'sessions',
-        where: { course: { equals: courseId } },
-        limit: 100,
+        where: { id: { in: sessionIds } },
+        limit: sessionIds.length,
       })
 
-      const updatePromises = sessions.docs.map(session => {
+      const updatePromises = sessions.docs.map((session) => {
         const currentSpots = session.availableSpots ?? 0
         return this.payload.update({
           collection: 'sessions',
@@ -205,77 +120,77 @@ export class CapacityService {
 
       await Promise.all(updatePromises)
     } catch (error) {
-      console.error('Failed to release course spots:', error)
+      logError('Failed to release spots', error, { sessionIds, numberOfPeople })
     }
   }
 
   /**
-   * Get availability info for a session.
+   * Get availability info for one or more sessions.
+   * Returns minimum availability across all sessions.
    */
-  async getSessionAvailability(sessionId: string | number): Promise<CapacityInfo | null> {
+  async getAvailability(sessionIds: number[]): Promise<{
+    minAvailable: number
+    sessions: CapacityInfo[]
+  } | null> {
+    if (sessionIds.length === 0) return null
+
     try {
-      const session = await this.payload.findByID({
+      const sessions = await this.payload.find({
         collection: 'sessions',
-        id: sessionId,
+        where: { id: { in: sessionIds } },
         depth: 1,
+        limit: sessionIds.length,
       })
 
-      if (!session) return null
+      if (sessions.docs.length === 0) return null
 
-      // Get max capacity from parent class/course
+      // Get max capacity from first session's parent class
+      const firstSession = sessions.docs[0]
       let maxCapacity = 0
-      if (session.sessionType === 'class' && session.class) {
-        const classDoc = typeof session.class === 'object'
-          ? session.class
-          : await this.payload.findByID({ collection: 'classes', id: session.class })
+
+      if (firstSession.class) {
+        const classDoc =
+          typeof firstSession.class === 'object'
+            ? firstSession.class
+            : await this.payload.findByID({ collection: 'classes', id: firstSession.class })
         maxCapacity = classDoc?.maxCapacity ?? 0
-      } else if (session.sessionType === 'course' && session.course) {
-        const courseDoc = typeof session.course === 'object'
-          ? session.course
-          : await this.payload.findByID({ collection: 'courses', id: session.course })
-        maxCapacity = courseDoc?.maxCapacity ?? 0
       }
 
-      return {
+      const sessionInfos: CapacityInfo[] = sessions.docs.map((session) => ({
         sessionId: session.id,
         availableSpots: session.availableSpots ?? maxCapacity,
         maxCapacity,
+      }))
+
+      const minAvailable = Math.min(...sessionInfos.map((s) => s.availableSpots))
+
+      return {
+        minAvailable,
+        sessions: sessionInfos,
       }
     } catch (error) {
-      console.error('Failed to get session availability:', error)
+      logError('Failed to get availability', error, { sessionIds })
       return null
     }
   }
 
   /**
-   * Get availability info for all course sessions.
+   * Get all session IDs for a class (useful for course enrollments).
    */
-  async getCourseAvailability(courseId: string | number): Promise<CapacityInfo[]> {
+  async getClassSessionIds(classId: number): Promise<number[]> {
     try {
       const sessions = await this.payload.find({
         collection: 'sessions',
         where: {
-          course: { equals: courseId },
+          class: { equals: classId },
           status: { equals: 'scheduled' },
         },
-        sort: 'startDateTime',
         limit: 100,
       })
 
-      const course = await this.payload.findByID({
-        collection: 'courses',
-        id: courseId,
-      })
-
-      const maxCapacity = course?.maxCapacity ?? 0
-
-      return sessions.docs.map(session => ({
-        sessionId: session.id,
-        availableSpots: session.availableSpots ?? maxCapacity,
-        maxCapacity,
-      }))
+      return sessions.docs.map((s) => s.id)
     } catch (error) {
-      console.error('Failed to get course availability:', error)
+      logError('Failed to get class session IDs', error, { classId })
       return []
     }
   }

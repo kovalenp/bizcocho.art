@@ -1,6 +1,4 @@
-// storage-adapter-import-placeholder
 import { postgresAdapter } from '@payloadcms/db-postgres'
-import { payloadCloudPlugin } from '@payloadcms/payload-cloud'
 import { lexicalEditor } from '@payloadcms/richtext-lexical'
 import path from 'path'
 import { buildConfig } from 'payload'
@@ -11,10 +9,10 @@ import { Users } from './collections/Users'
 import { Media } from './collections/Media'
 import { Tags } from './collections/Tags'
 import { Classes } from './collections/Classes'
-import { Courses } from './collections/Courses'
 import { Instructors } from './collections/Instructors'
 import { Sessions } from './collections/Sessions'
 import { Bookings } from './collections/Bookings'
+import { logger } from './lib/logger'
 
 const filename = fileURLToPath(import.meta.url)
 const dirname = path.dirname(filename)
@@ -31,7 +29,6 @@ export default buildConfig({
     Media,
     Tags,
     Classes,
-    Courses,
     Instructors,
     Sessions,
     Bookings,
@@ -61,8 +58,8 @@ export default buildConfig({
     fallback: true,
   },
   sharp,
+  logger,
   plugins: [
-    payloadCloudPlugin(),
     // storage-adapter-placeholder
   ],
 })
