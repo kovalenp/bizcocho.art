@@ -9,6 +9,7 @@
   "scripts": {
     "build": "cross-env NODE_OPTIONS=\"--no-deprecation --max-old-space-size=8000\" next build",
     "dev": "cross-env NODE_OPTIONS=--no-deprecation next dev -p 4321",
+    "dev:stripe": "concurrently --kill-others \"pnpm dev\" \"stripe listen --forward-to localhost:4321/api/webhooks/stripe\"",
     "devsafe": "rm -rf .next && cross-env NODE_OPTIONS=--no-deprecation next dev -p 4321",
     "generate:importmap": "cross-env NODE_OPTIONS=--no-deprecation payload generate:importmap",
     "generate:types": "cross-env NODE_OPTIONS=--no-deprecation payload generate:types",
@@ -52,6 +53,7 @@
     "@types/react-dom": "19.1.6",
     "@vitejs/plugin-react": "4.5.2",
     "autoprefixer": "^10.4.22",
+    "concurrently": "^9.2.1",
     "eslint": "^9.16.0",
     "eslint-config-next": "15.4.4",
     "jsdom": "26.1.0",
