@@ -31,7 +31,6 @@ export function ClassDetailLayout({
   locale,
 }: ClassDetailLayoutProps) {
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null)
-  const [localSessions, setLocalSessions] = useState(classSessions)
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -46,13 +45,13 @@ export function ClassDetailLayout({
         <ClassInfo classTemplate={classTemplate} tags={tags} messages={messages} />
 
         {/* Session Selector */}
-        {localSessions.length > 0 && (
+        {classSessions.length > 0 && (
           <div className="bg-white rounded-lg p-6 shadow-md">
             <h3 className="text-lg font-semibold text-gray-900 mb-3">
               {messages.booking.selectSession}
             </h3>
             <SessionSelector
-              sessions={localSessions}
+              sessions={classSessions}
               classTemplate={classTemplate}
               selectedSessionId={selectedSessionId}
               onSessionSelect={setSelectedSessionId}
@@ -81,10 +80,9 @@ export function ClassDetailLayout({
       <div className="lg:col-span-1">
         <BookingWidget
           classTemplate={classTemplate}
-          classSessions={localSessions}
+          classSessions={classSessions}
           selectedSessionId={selectedSessionId}
           onSessionSelect={setSelectedSessionId}
-          onSessionsUpdate={setLocalSessions}
           messages={messages}
           locale={locale}
         />

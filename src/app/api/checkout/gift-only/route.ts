@@ -2,6 +2,7 @@ import { getPayload } from 'payload'
 import config from '@payload-config'
 import { NextRequest, NextResponse } from 'next/server'
 import { createGiftCertificateService } from '@/services/gift-certificates'
+import { createCapacityService } from '@/services/capacity'
 import { sendBookingConfirmationEmail, sendCourseConfirmationEmail } from '@/lib/email'
 import { logError, logInfo } from '@/lib/logger'
 
@@ -60,17 +61,6 @@ export async function POST(request: NextRequest) {
       }, { status: 400 })
     }
 
-    // Reserve spots on all sessions
-    const sessions = await payload.find({
-      collection: 'sessions',
-      where: { id: { in: sessionIds } },
-      limit: sessionIds.length,
-    })
-
-    if (sessions.docs.length !== sessionIds.length) {
-      return NextResponse.json({ error: 'One or more sessions not found' }, { status: 404 })
-    }
-
     // Fetch the class for email
     const classDoc = await payload.findByID({
       collection: 'classes',
@@ -82,51 +72,23 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Class not found' }, { status: 404 })
     }
 
-    // Check capacity
-    const minAvailableSpots = Math.min(
-      ...sessions.docs.map((s) => s.availableSpots ?? classDoc.maxCapacity ?? 0)
-    )
+    // Reserve spots using CapacityService (handles verification and rollback)
+    const capacityService = createCapacityService(payload)
+    const reserveResult = await capacityService.reserveSpots(sessionIds, numberOfPeople)
 
-    if (numberOfPeople > minAvailableSpots) {
-      return NextResponse.json({ error: 'Not enough capacity available' }, { status: 400 })
+    if (!reserveResult.success) {
+      return NextResponse.json(
+        { error: reserveResult.error || 'Not enough capacity available' },
+        { status: 409 }
+      )
     }
 
-    // Reserve spots
-    const updatePromises = sessions.docs.map((session) => {
-      const currentSpots = session.availableSpots ?? classDoc.maxCapacity ?? 0
-      return payload.update({
-        collection: 'sessions',
-        id: session.id,
-        data: { availableSpots: currentSpots - numberOfPeople },
-      })
-    })
-    await Promise.all(updatePromises)
-
-    // Verify no session went negative (race condition check)
-    const verifiedSessions = await payload.find({
+    // Fetch sessions for email
+    const bookedSessions = await payload.find({
       collection: 'sessions',
       where: { id: { in: sessionIds } },
       limit: sessionIds.length,
     })
-
-    const hasNegativeSpots = verifiedSessions.docs.some(
-      (s) => s.availableSpots != null && s.availableSpots < 0
-    )
-
-    if (hasNegativeSpots) {
-      // Rollback
-      const rollbackPromises = verifiedSessions.docs.map((session) => {
-        const currentSpots = session.availableSpots ?? 0
-        return payload.update({
-          collection: 'sessions',
-          id: session.id,
-          data: { availableSpots: currentSpots + numberOfPeople },
-        })
-      })
-      await Promise.all(rollbackPromises)
-
-      return NextResponse.json({ error: 'Not enough capacity available - please try again' }, { status: 409 })
-    }
 
     // Create confirmed booking (no payment needed)
     const booking = await payload.create({
@@ -170,11 +132,11 @@ export async function POST(request: NextRequest) {
         await sendCourseConfirmationEmail({
           booking,
           classDoc,
-          sessions: verifiedSessions.docs,
+          sessions: bookedSessions.docs,
           locale,
         })
       } else {
-        const firstSession = verifiedSessions.docs[0]
+        const firstSession = bookedSessions.docs[0]
         await sendBookingConfirmationEmail({
           booking,
           session: { ...firstSession, class: classDoc },

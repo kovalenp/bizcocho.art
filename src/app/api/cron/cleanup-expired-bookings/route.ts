@@ -1,6 +1,7 @@
 import { getPayload } from 'payload'
 import config from '@payload-config'
 import { NextRequest, NextResponse } from 'next/server'
+import { createBookingService } from '@/services/booking'
 import { logError, logInfo } from '@/lib/logger'
 
 /**
@@ -25,22 +26,12 @@ export async function POST(request: NextRequest) {
 
   try {
     const payload = await getPayload({ config })
-    const now = new Date().toISOString()
+    const bookingService = createBookingService(payload)
 
-    // Find expired pending bookings
-    const expiredBookings = await payload.find({
-      collection: 'bookings',
-      where: {
-        and: [
-          { status: { equals: 'pending' } },
-          { paymentStatus: { equals: 'unpaid' } },
-          { expiresAt: { less_than: now } },
-        ],
-      },
-      limit: 100,
-    })
+    // Use BookingService to handle expired bookings (uses CapacityService internally)
+    const result = await bookingService.handleExpiredBookings()
 
-    if (expiredBookings.docs.length === 0) {
+    if (result.processed === 0 && result.errors === 0) {
       return NextResponse.json({
         success: true,
         message: 'No expired bookings found',
@@ -48,60 +39,13 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    let cleanedCount = 0
-    const errors: string[] = []
-
-    for (const booking of expiredBookings.docs) {
-      try {
-        const numberOfPeople = booking.numberOfPeople || 1
-
-        // Get session IDs from the booking (unified approach for both class and course)
-        const sessionIds = Array.isArray(booking.sessions)
-          ? booking.sessions.map((s: { id: number } | number) => (typeof s === 'object' ? s.id : s))
-          : []
-
-        if (sessionIds.length > 0) {
-          // Restore spots for all sessions in the booking
-          const sessions = await payload.find({
-            collection: 'sessions',
-            where: { id: { in: sessionIds } },
-            limit: 100,
-          })
-
-          const updatePromises = sessions.docs.map((session) =>
-            payload.update({
-              collection: 'sessions',
-              id: session.id,
-              data: {
-                availableSpots: (session.availableSpots || 0) + numberOfPeople,
-              },
-            })
-          )
-
-          await Promise.all(updatePromises)
-        }
-
-        // Delete the expired booking
-        await payload.delete({
-          collection: 'bookings',
-          id: booking.id,
-        })
-
-        cleanedCount++
-      } catch (error) {
-        const errorMsg = `Failed to cleanup booking ${booking.id}`
-        logError(errorMsg, error, { bookingId: booking.id })
-        errors.push(errorMsg)
-      }
-    }
-
-    logInfo('Cleaned up expired bookings', { cleanedCount, errorCount: errors.length })
+    logInfo('Cleaned up expired bookings', { cleaned: result.processed, errors: result.errors })
 
     return NextResponse.json({
       success: true,
-      message: `Cleaned up ${cleanedCount} expired bookings`,
-      cleaned: cleanedCount,
-      errors: errors.length > 0 ? errors : undefined,
+      message: `Cleaned up ${result.processed} expired bookings`,
+      cleaned: result.processed,
+      errors: result.errors > 0 ? result.errors : undefined,
     })
   } catch (error) {
     logError('Cleanup cron failed', error)

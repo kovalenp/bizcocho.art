@@ -1,4 +1,9 @@
 import type { CollectionConfig } from 'payload'
+import {
+  createSessionManagementService,
+  type ScheduleConfig,
+  type ClassConfig,
+} from '../services/session-manager'
 import { logInfo, logWarn } from '../lib/logger'
 
 export const Classes: CollectionConfig = {
@@ -194,7 +199,6 @@ export const Classes: CollectionConfig = {
   hooks: {
     afterChange: [
       async ({ doc, req, operation, previousDoc }) => {
-        const { payload } = req
         const classDoc = doc
 
         // Skip on create - user needs to save first, then configure schedule
@@ -207,141 +211,80 @@ export const Classes: CollectionConfig = {
           return doc // Schedule not configured yet
         }
 
-        // Check if schedule changed
-        const scheduleChanged =
-          !previousDoc?.schedule ||
-          previousDoc.schedule.startDate !== schedule.startDate ||
-          previousDoc.schedule.endDate !== schedule.endDate ||
-          previousDoc.schedule.recurrence !== schedule.recurrence ||
-          JSON.stringify(previousDoc.schedule.daysOfWeek) !== JSON.stringify(schedule.daysOfWeek) ||
-          previousDoc.schedule.startTime !== schedule.startTime ||
-          previousDoc.schedule.timezone !== schedule.timezone ||
-          previousDoc.durationMinutes !== classDoc.durationMinutes ||
-          previousDoc.maxCapacity !== classDoc.maxCapacity ||
-          previousDoc.type !== classDoc.type
+        // Use SessionManagementService for change detection and session generation
+        const sessionService = createSessionManagementService(req.payload)
+
+        const scheduleConfig: ScheduleConfig = {
+          startDate: schedule.startDate,
+          endDate: schedule.endDate || null,
+          recurrence: schedule.recurrence || 'weekly',
+          daysOfWeek: schedule.daysOfWeek,
+          startTime: schedule.startTime,
+          timezone: schedule.timezone || 'Europe/Madrid',
+        }
+
+        const classConfig: ClassConfig = {
+          maxCapacity: classDoc.maxCapacity,
+          type: classDoc.type,
+        }
+
+        const previousSchedule = previousDoc?.schedule
+          ? {
+              startDate: previousDoc.schedule.startDate,
+              endDate: previousDoc.schedule.endDate || null,
+              recurrence: previousDoc.schedule.recurrence || 'weekly',
+              daysOfWeek: previousDoc.schedule.daysOfWeek || [],
+              startTime: previousDoc.schedule.startTime,
+              timezone: previousDoc.schedule.timezone || 'Europe/Madrid',
+            }
+          : null
+
+        const previousClassConfig = previousDoc
+          ? { maxCapacity: previousDoc.maxCapacity, type: previousDoc.type }
+          : undefined
+
+        const scheduleChanged = sessionService.hasScheduleChanged(
+          scheduleConfig,
+          previousSchedule,
+          classConfig,
+          previousClassConfig
+        )
 
         if (!scheduleChanged) {
           return doc
         }
 
-        logInfo('Schedule changed, regenerating sessions', { classId: doc.id, title: classDoc.title, type: classDoc.type })
-
-        // Default end date to 3 months from start if not specified
-        const start = new Date(schedule.startDate)
-        const end = schedule.endDate
-          ? new Date(schedule.endDate)
-          : new Date(start.getTime() + 90 * 24 * 60 * 60 * 1000)
-
-        const daysSet = new Set(schedule.daysOfWeek.map((d: string) => parseInt(d, 10)))
-        const recurrence = schedule.recurrence || 'weekly'
-
-        // Generate session dates
-        const sessionDates: Date[] = []
-        const current = new Date(start)
-        let weekCount = 0
-        let lastWeekNumber = -1
-
-        while (current <= end) {
-          const dayOfWeek = current.getDay()
-          const weekNumber = Math.floor((current.getTime() - start.getTime()) / (7 * 24 * 60 * 60 * 1000))
-
-          if (weekNumber !== lastWeekNumber) {
-            if (lastWeekNumber !== -1) weekCount++
-            lastWeekNumber = weekNumber
-          }
-
-          let shouldInclude = false
-          if (daysSet.has(dayOfWeek)) {
-            if (recurrence === 'weekly') {
-              shouldInclude = true
-            } else if (recurrence === 'biweekly') {
-              shouldInclude = weekCount % 2 === 0
-            } else if (recurrence === 'monthly') {
-              // First occurrence of this day in each month
-              const firstOfMonth = new Date(current.getFullYear(), current.getMonth(), 1)
-              const firstOccurrence = new Date(firstOfMonth)
-              while (firstOccurrence.getDay() !== dayOfWeek) {
-                firstOccurrence.setDate(firstOccurrence.getDate() + 1)
-              }
-              shouldInclude = current.getDate() === firstOccurrence.getDate()
-            }
-          }
-
-          if (shouldInclude) {
-            sessionDates.push(new Date(current))
-          }
-          current.setDate(current.getDate() + 1)
-        }
-
-        if (sessionDates.length === 0) {
-          logWarn('No session dates generated - check schedule configuration', { classId: doc.id })
-          return doc
-        }
-
-        // Delete existing sessions
-        await payload.delete({
-          collection: 'sessions',
-          where: { class: { equals: classDoc.id } },
-          req,
+        logInfo('Schedule changed, regenerating sessions', {
+          classId: doc.id,
+          title: classDoc.title,
+          type: classDoc.type,
         })
 
-        // Parse start time
-        const [hours, minutes] = (schedule.startTime || '18:00').split(':').map((n: string) => parseInt(n, 10))
+        const result = await sessionService.generateSessions(doc.id, scheduleConfig, classConfig)
 
-        // Create sessions sequentially
-        for (const date of sessionDates) {
-          const startDateTime = new Date(date)
-          startDateTime.setHours(hours, minutes, 0, 0)
-
-          await payload.create({
-            collection: 'sessions',
-            data: {
-              sessionType: classDoc.type, // 'class' or 'course' - mirrors parent
-              class: classDoc.id,
-              startDateTime: startDateTime.toISOString(),
-              timezone: schedule.timezone || 'Europe/Madrid',
-              status: 'scheduled',
-              availableSpots: classDoc.maxCapacity,
-            },
-            req,
-          })
+        if (!result.success) {
+          if (result.error?.includes('active bookings')) {
+            throw new Error(result.error)
+          }
+          logWarn('Session generation failed', { classId: doc.id, error: result.error })
         }
-        logInfo('Generated sessions', { classId: doc.id, title: classDoc.title, type: classDoc.type, sessionCount: sessionDates.length })
 
         return doc
       },
     ],
     beforeDelete: [
       async ({ req, id }) => {
-        const { payload } = req
+        const sessionService = createSessionManagementService(req.payload)
+        const classId = typeof id === 'string' ? parseInt(id, 10) : id
 
-        // Get all session IDs for this class
-        const sessions = await payload.find({
-          collection: 'sessions',
-          where: { class: { equals: id } },
-          limit: 1000,
-        })
-
-        if (sessions.docs.length > 0) {
-          const sessionIds = sessions.docs.map((s) => s.id)
-
-          // Check for any bookings referencing these sessions
-          const bookings = await payload.find({
-            collection: 'bookings',
-            where: { sessions: { in: sessionIds } },
-            limit: 1,
-          })
-
-          if (bookings.totalDocs > 0) {
-            throw new Error('Cannot delete class with existing bookings')
-          }
+        // Check for active bookings
+        const hasBookings = await sessionService.hasActiveBookings(classId)
+        if (hasBookings) {
+          throw new Error('Cannot delete class with existing bookings')
         }
 
-        // Delete all sessions
-        await payload.delete({
-          collection: 'sessions',
-          where: { class: { equals: id } },
-        })
+        // Delete all sessions (force = true skips booking check since we already did it)
+        await sessionService.deleteSessions(classId, { force: true })
 
         return true
       },

@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import Stripe from 'stripe'
 import { logError } from '@/lib/logger'
 import { createGiftCertificateService } from '@/services/gift-certificates'
+import { createCapacityService } from '@/services/capacity'
 
 type CheckoutRequestBody = {
   classId: string // Required: the class/course ID
@@ -115,15 +116,6 @@ export async function POST(request: NextRequest) {
       sessionsToBook = [{ id: sessionDoc.id, availableSpots: sessionDoc.availableSpots }]
     }
 
-    // Check capacity across all sessions to book
-    const minAvailableSpots = Math.min(
-      ...sessionsToBook.map((s) => s.availableSpots ?? classDoc.maxCapacity ?? 0)
-    )
-
-    if (numberOfPeople > minAvailableSpots) {
-      return NextResponse.json({ error: 'Not enough capacity available' }, { status: 400 })
-    }
-
     // Calculate total price
     const totalPriceCents = (classDoc.priceCents || 0) * numberOfPeople
     const currency = classDoc.currency || 'eur'
@@ -144,46 +136,16 @@ export async function POST(request: NextRequest) {
       amountToChargeCents = discountResult.remainingToPayCents
     }
 
-    // Reserve spots on all sessions
+    // Reserve spots using CapacityService (handles verification and rollback)
     const sessionIds = sessionsToBook.map((s) => s.id)
-    const updatePromises = sessionsToBook.map((session) => {
-      const currentSpots = session.availableSpots ?? classDoc.maxCapacity ?? 0
-      return payload.update({
-        collection: 'sessions',
-        id: session.id,
-        data: {
-          availableSpots: currentSpots - numberOfPeople,
-        },
-      })
-    })
-    await Promise.all(updatePromises)
+    const capacityService = createCapacityService(payload)
+    const reserveResult = await capacityService.reserveSpots(sessionIds, numberOfPeople)
 
-    // Verify no session went negative (race condition check)
-    const verifiedSessions = await payload.find({
-      collection: 'sessions',
-      where: { id: { in: sessionIds } },
-      limit: 100,
-    })
-
-    const hasNegativeSpots = verifiedSessions.docs.some(
-      (s) => s.availableSpots != null && s.availableSpots < 0
-    )
-
-    if (hasNegativeSpots) {
-      // Rollback: restore spots
-      const rollbackPromises = verifiedSessions.docs.map((session) => {
-        const currentSpots = session.availableSpots ?? 0
-        return payload.update({
-          collection: 'sessions',
-          id: session.id,
-          data: {
-            availableSpots: currentSpots + numberOfPeople,
-          },
-        })
-      })
-      await Promise.all(rollbackPromises)
-
-      return NextResponse.json({ error: 'Not enough capacity available - please try again' }, { status: 409 })
+    if (!reserveResult.success) {
+      return NextResponse.json(
+        { error: reserveResult.error || 'Not enough capacity available' },
+        { status: 409 }
+      )
     }
 
     // Create booking with sessions array (expires in 10 minutes if unpaid)
@@ -237,19 +199,16 @@ export async function POST(request: NextRequest) {
       })
     } catch (bookingError) {
       // Rollback spots if booking creation fails
-      const rollbackPromises = verifiedSessions.docs.map((session) => {
-        const currentSpots = session.availableSpots ?? 0
-        return payload.update({
-          collection: 'sessions',
-          id: session.id,
-          data: {
-            availableSpots: currentSpots + numberOfPeople,
-          },
-        })
-      })
-      await Promise.all(rollbackPromises)
+      await capacityService.releaseSpots(sessionIds, numberOfPeople)
       throw bookingError
     }
+
+    // Fetch sessions for description building
+    const bookedSessions = await payload.find({
+      collection: 'sessions',
+      where: { id: { in: sessionIds } },
+      limit: sessionIds.length,
+    })
 
     // Build Stripe description
     const classTitle = (classDoc.title as string) || 'Booking'
@@ -259,7 +218,7 @@ export async function POST(request: NextRequest) {
       description = `Full course enrollment - ${sessionsToBook.length} sessions, ${numberOfPeople} ${numberOfPeople === 1 ? 'person' : 'people'}`
     } else {
       // Single session - get date/time
-      const firstSession = verifiedSessions.docs[0]
+      const firstSession = bookedSessions.docs[0]
       const startDateTime = new Date(firstSession.startDateTime)
       const sessionDate = startDateTime.toLocaleDateString('en-US', {
         weekday: 'long',

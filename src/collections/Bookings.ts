@@ -1,5 +1,6 @@
 import type { CollectionConfig } from 'payload'
-import { logInfo } from '../lib/logger'
+import type { Booking } from '../payload-types'
+import { createBookingService } from '../services/booking'
 
 export const Bookings: CollectionConfig = {
   slug: 'bookings',
@@ -252,73 +253,14 @@ export const Bookings: CollectionConfig = {
     ],
     afterChange: [
       async ({ doc, req, operation, previousDoc }) => {
-        const { payload } = req
-        const numberOfPeople = doc.numberOfPeople
-
-        // Get session IDs from the booking
-        const sessionIds = Array.isArray(doc.sessions)
-          ? doc.sessions.map((s: { id: number } | number) => (typeof s === 'object' ? s.id : s))
-          : []
-
-        if (sessionIds.length === 0) {
+        // Only handle updates (capacity changes on status/numberOfPeople changes)
+        if (operation !== 'update') {
           return doc
         }
 
-        // Determine capacity change
-        // NOTE: The checkout API already reserves spots when creating the pending booking.
-        // We only need to handle:
-        // 1. Cancellation (restore spots)
-        // 2. Number of people changes on confirmed bookings
-        // We do NOT decrement on confirmation because checkout API already did that.
-        let capacityChange = 0
-
-        if (operation === 'update') {
-          const wasConfirmed = previousDoc?.status === 'confirmed'
-          const wasPending = previousDoc?.status === 'pending'
-          const isConfirmed = doc.status === 'confirmed'
-          const isCancelled = doc.status === 'cancelled'
-          const previousPeople = previousDoc?.numberOfPeople || 0
-
-          if ((wasConfirmed || wasPending) && isCancelled) {
-            // Cancelled: restore capacity (spots were reserved at checkout)
-            capacityChange = previousPeople
-          } else if (wasConfirmed && isConfirmed && numberOfPeople !== previousPeople) {
-            // Changed number of people on confirmed booking: adjust
-            capacityChange = previousPeople - numberOfPeople
-          }
-          // Note: pending → confirmed does NOT change capacity because
-          // the checkout API already reserved the spots
-        }
-
-        // Update all sessions in the booking
-        if (capacityChange !== 0) {
-          const sessions = await payload.find({
-            collection: 'sessions',
-            where: { id: { in: sessionIds } },
-            limit: 100,
-          })
-
-          const updatePromises = sessions.docs.map((session) => {
-            const currentSpots = session.availableSpots || 0
-            const newSpots = currentSpots + capacityChange
-
-            return payload.update({
-              collection: 'sessions',
-              id: session.id,
-              data: {
-                availableSpots: Math.max(0, newSpots),
-              },
-            })
-          })
-
-          await Promise.all(updatePromises)
-          logInfo('Updated capacity for booking sessions', {
-            bookingId: doc.id,
-            bookingType: doc.bookingType,
-            sessionsCount: sessions.docs.length,
-            capacityChange,
-          })
-        }
+        // Delegate to BookingService for capacity management
+        const bookingService = createBookingService(req.payload)
+        await bookingService.handleStatusChange(doc as Booking, previousDoc as Booking | null)
 
         return doc
       },

@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import { getPayload } from 'payload'
 import config from '@payload-config'
 import Stripe from 'stripe'
+import { createCapacityService } from '@/services/capacity'
 import { logError } from '@/lib/logger'
 
 type PageProps = {
@@ -53,31 +54,16 @@ export default async function BookingCancelPage({ params, searchParams }: PagePr
             id: parseInt(bookingId, 10),
           })
 
-          // Restore available spots for all sessions (unified approach)
+          // Restore available spots using CapacityService
           if (sessionIds && numberOfPeople > 0) {
-            const sessionIdArray = sessionIds.split(',').map(id => parseInt(id.trim(), 10)).filter(id => !isNaN(id))
+            const sessionIdArray = sessionIds
+              .split(',')
+              .map((id) => parseInt(id.trim(), 10))
+              .filter((id) => !isNaN(id))
 
             if (sessionIdArray.length > 0) {
-              const sessions = await payload.find({
-                collection: 'sessions',
-                where: {
-                  id: { in: sessionIdArray },
-                },
-                limit: 100,
-              })
-
-              const updatePromises = sessions.docs.map(sessionDoc => {
-                const currentSpots = sessionDoc.availableSpots || 0
-                return payload.update({
-                  collection: 'sessions',
-                  id: sessionDoc.id,
-                  data: {
-                    availableSpots: currentSpots + numberOfPeople,
-                  },
-                })
-              })
-
-              await Promise.all(updatePromises)
+              const capacityService = createCapacityService(payload)
+              await capacityService.releaseSpots(sessionIdArray, numberOfPeople)
             }
           }
         }

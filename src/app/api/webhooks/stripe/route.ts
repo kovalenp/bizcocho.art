@@ -9,6 +9,7 @@ import {
   sendGiftCertificatePurchaseConfirmation,
 } from '@/lib/email'
 import { createGiftCertificateService } from '@/services/gift-certificates'
+import { createCapacityService } from '@/services/capacity'
 import { logError, logInfo, logDebug } from '@/lib/logger'
 
 // Disable body parsing to get raw body for webhook signature verification
@@ -326,26 +327,10 @@ export async function POST(request: NextRequest) {
             .filter((id) => !isNaN(id))
 
           if (sessionIdNums.length > 0) {
-            const sessions = await payload.find({
-              collection: 'sessions',
-              where: { id: { in: sessionIdNums } },
-              limit: 100,
-            })
-
-            const updatePromises = sessions.docs.map((sessionDoc) => {
-              const currentSpots = sessionDoc.availableSpots || 0
-              return payload.update({
-                collection: 'sessions',
-                id: sessionDoc.id,
-                data: {
-                  availableSpots: currentSpots + numberOfPeople,
-                },
-              })
-            })
-
-            await Promise.all(updatePromises)
+            const capacityService = createCapacityService(payload)
+            await capacityService.releaseSpots(sessionIdNums, numberOfPeople)
             logInfo('Expired session, restored spots', {
-              sessionsCount: sessions.docs.length,
+              sessionsCount: sessionIdNums.length,
               bookingId,
               numberOfPeople,
             })
