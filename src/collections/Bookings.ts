@@ -1,5 +1,5 @@
 import type { CollectionConfig } from 'payload'
-import { logWarn, logInfo } from '../lib/logger'
+import { logInfo } from '../lib/logger'
 
 export const Bookings: CollectionConfig = {
   slug: 'bookings',
@@ -147,6 +147,37 @@ export const Bookings: CollectionConfig = {
       type: 'text',
       admin: {
         description: 'Stripe Payment Intent ID',
+      },
+    },
+    {
+      name: 'giftCertificateCode',
+      type: 'text',
+      admin: {
+        description: 'Gift certificate or promo code used for this booking',
+      },
+    },
+    {
+      name: 'giftCertificateAmountCents',
+      type: 'number',
+      min: 0,
+      admin: {
+        description: 'Amount covered by gift certificate/promo code (in cents)',
+      },
+    },
+    {
+      name: 'stripeAmountCents',
+      type: 'number',
+      min: 0,
+      admin: {
+        description: 'Amount charged via Stripe (in cents)',
+      },
+    },
+    {
+      name: 'originalPriceCents',
+      type: 'number',
+      min: 0,
+      admin: {
+        description: 'Original total price before discounts (in cents)',
       },
     },
     {

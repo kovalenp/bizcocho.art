@@ -1,19 +1,36 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
+import { type Locale } from '@/i18n/config'
+import { getMessages } from '@/i18n/messages'
+import type { Metadata } from 'next'
 
-type PageProps = {
-  searchParams: Promise<{ session_id?: string; booking_id?: string }>
+type Props = {
+  params: Promise<{ locale: Locale }>
+  searchParams: Promise<{ session_id?: string; code?: string }>
 }
 
-export default async function BookingSuccessPage({ searchParams }: PageProps) {
-  const params = await searchParams
-  const sessionId = params.session_id
-  const bookingId = params.booking_id
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const { locale } = await params
+  const messages = getMessages(locale)
 
-  // Accept either session_id (Stripe checkout) or booking_id (gift-only checkout)
-  if (!sessionId && !bookingId) {
-    redirect('/')
+  return {
+    title: `${messages.giftCertificates.successTitle} | bizcocho.art`,
+    robots: { index: false, follow: false },
   }
+}
+
+export default async function GiftCertificateSuccessPage({ params, searchParams }: Props) {
+  const { locale } = await params
+  const search = await searchParams
+  const sessionId = search.session_id
+  const code = search.code
+
+  if (!sessionId) {
+    redirect(`/${locale}/gift-certificates`)
+  }
+
+  const messages = getMessages(locale)
+  const t = messages.giftCertificates
 
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
@@ -40,16 +57,27 @@ export default async function BookingSuccessPage({ searchParams }: PageProps) {
 
           {/* Success Message */}
           <h1 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">
-            Booking Confirmed!
+            {t.successTitle}
           </h1>
           <p className="text-lg text-gray-600 mb-8">
-            Your payment has been processed successfully. We&apos;ve sent a confirmation email with all
-            the details to your email address.
+            {t.successMessage}
           </p>
+
+          {/* Gift Certificate Code */}
+          {code && (
+            <div className="bg-primary/5 border-2 border-primary/20 rounded-lg p-6 mb-8">
+              <p className="text-sm text-gray-600 mb-2">{t.yourCode}:</p>
+              <p className="text-3xl font-mono font-bold text-primary tracking-wider">
+                {code}
+              </p>
+            </div>
+          )}
 
           {/* Information Box */}
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 mb-8 text-left">
-            <h2 className="font-semibold text-blue-900 mb-2">What&apos;s next?</h2>
+            <h2 className="font-semibold text-blue-900 mb-2">
+              {locale === 'es' ? '¿Qué pasa ahora?' : "What's next?"}
+            </h2>
             <ul className="text-blue-800 space-y-2 text-sm">
               <li className="flex items-start">
                 <svg
@@ -63,7 +91,11 @@ export default async function BookingSuccessPage({ searchParams }: PageProps) {
                     clipRule="evenodd"
                   />
                 </svg>
-                <span>Check your email for booking details and receipt</span>
+                <span>
+                  {locale === 'es'
+                    ? 'El destinatario recibirá un email con el certificado de regalo'
+                    : 'The recipient will receive an email with the gift certificate'}
+                </span>
               </li>
               <li className="flex items-start">
                 <svg
@@ -77,7 +109,11 @@ export default async function BookingSuccessPage({ searchParams }: PageProps) {
                     clipRule="evenodd"
                   />
                 </svg>
-                <span>Save the date and arrive 10 minutes early</span>
+                <span>
+                  {locale === 'es'
+                    ? 'Tú también recibirás una confirmación de compra'
+                    : "You'll also receive a purchase confirmation"}
+                </span>
               </li>
               <li className="flex items-start">
                 <svg
@@ -91,7 +127,29 @@ export default async function BookingSuccessPage({ searchParams }: PageProps) {
                     clipRule="evenodd"
                   />
                 </svg>
-                <span>Contact us if you need to cancel or reschedule (48 hours notice required)</span>
+                <span>
+                  {locale === 'es'
+                    ? 'El código puede usarse al reservar cualquier clase'
+                    : 'The code can be used when booking any class'}
+                </span>
+              </li>
+              <li className="flex items-start">
+                <svg
+                  className="h-5 w-5 text-blue-600 mr-2 mt-0.5 flex-shrink-0"
+                  fill="currentColor"
+                  viewBox="0 0 20 20"
+                >
+                  <path
+                    fillRule="evenodd"
+                    d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+                <span>
+                  {locale === 'es'
+                    ? 'El certificado es válido por 12 meses'
+                    : 'The certificate is valid for 12 months'}
+                </span>
               </li>
             </ul>
           </div>
@@ -99,16 +157,16 @@ export default async function BookingSuccessPage({ searchParams }: PageProps) {
           {/* Actions */}
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <Link
-              href="/"
+              href={`/${locale}`}
               className="inline-flex items-center justify-center px-6 py-3 border border-transparent text-base font-medium rounded-md text-white bg-primary hover:bg-primary/90 transition-colors"
             >
-              Back to Home
+              {locale === 'es' ? 'Volver al Inicio' : 'Back to Home'}
             </Link>
             <Link
-              href="/classes"
+              href={`/${locale}/gift-certificates`}
               className="inline-flex items-center justify-center px-6 py-3 border border-gray-300 text-base font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 transition-colors"
             >
-              Browse More Classes
+              {locale === 'es' ? 'Comprar Otro' : 'Buy Another'}
             </Link>
           </div>
         </div>

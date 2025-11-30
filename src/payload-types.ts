@@ -74,6 +74,7 @@ export interface Config {
     instructors: Instructor;
     sessions: Session;
     bookings: Booking;
+    'gift-certificates': GiftCertificate;
     'payload-locked-documents': PayloadLockedDocument;
     'payload-preferences': PayloadPreference;
     'payload-migrations': PayloadMigration;
@@ -91,6 +92,7 @@ export interface Config {
     instructors: InstructorsSelect<false> | InstructorsSelect<true>;
     sessions: SessionsSelect<false> | SessionsSelect<true>;
     bookings: BookingsSelect<false> | BookingsSelect<true>;
+    'gift-certificates': GiftCertificatesSelect<false> | GiftCertificatesSelect<true>;
     'payload-locked-documents': PayloadLockedDocumentsSelect<false> | PayloadLockedDocumentsSelect<true>;
     'payload-preferences': PayloadPreferencesSelect<false> | PayloadPreferencesSelect<true>;
     'payload-migrations': PayloadMigrationsSelect<false> | PayloadMigrationsSelect<true>;
@@ -383,6 +385,22 @@ export interface Booking {
    * Stripe Payment Intent ID
    */
   stripePaymentIntentId?: string | null;
+  /**
+   * Gift certificate or promo code used for this booking
+   */
+  giftCertificateCode?: string | null;
+  /**
+   * Amount covered by gift certificate/promo code (in cents)
+   */
+  giftCertificateAmountCents?: number | null;
+  /**
+   * Amount charged via Stripe (in cents)
+   */
+  stripeAmountCents?: number | null;
+  /**
+   * Original total price before discounts (in cents)
+   */
+  originalPriceCents?: number | null;
   bookingDate: string;
   /**
    * Expiration time for pending reservations (auto-cleaned up after this time)
@@ -394,6 +412,101 @@ export interface Booking {
   checkedIn?: boolean | null;
   /**
    * Internal notes or special requests
+   */
+  notes?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "gift-certificates".
+ */
+export interface GiftCertificate {
+  id: number;
+  /**
+   * Unique code (auto-generated if empty). Format: XXXX-XXXX
+   */
+  code: string;
+  /**
+   * Gift = purchasable voucher with balance. Promo = admin-generated discount.
+   */
+  type: 'gift' | 'promo';
+  /**
+   * pending = awaiting payment, active = ready to use, partial = has remaining balance, redeemed = fully used, expired = past expiration date
+   */
+  status: 'pending' | 'active' | 'partial' | 'redeemed' | 'expired';
+  /**
+   * Expiration date (12 months from purchase for gifts)
+   */
+  expiresAt?: string | null;
+  /**
+   * Initial value in cents (e.g., 5000 = 50€). For gift certificates only.
+   */
+  initialValueCents?: number | null;
+  /**
+   * Current remaining balance in cents. For gift certificates only.
+   */
+  currentBalanceCents?: number | null;
+  /**
+   * Currency for the gift certificate value
+   */
+  currency?: ('eur' | 'usd') | null;
+  /**
+   * Type of discount. For promo codes only.
+   */
+  discountType?: ('percentage' | 'fixed') | null;
+  /**
+   * Discount value: percentage (0-100) or fixed amount in cents. For promo codes only.
+   */
+  discountValue?: number | null;
+  /**
+   * Maximum number of uses. Leave empty for unlimited. For promo codes only.
+   */
+  maxUses?: number | null;
+  /**
+   * Current number of times this code has been used.
+   */
+  currentUses?: number | null;
+  /**
+   * Information about the person who purchased this gift certificate
+   */
+  purchaser?: {
+    email?: string | null;
+    firstName?: string | null;
+    lastName?: string | null;
+    phone?: string | null;
+  };
+  /**
+   * Information about the gift recipient
+   */
+  recipient?: {
+    email?: string | null;
+    name?: string | null;
+    /**
+     * Personal message from purchaser to recipient
+     */
+    personalMessage?: string | null;
+  };
+  /**
+   * Stripe Payment Intent ID for the purchase
+   */
+  stripePaymentIntentId?: string | null;
+  /**
+   * History of redemptions for this certificate
+   */
+  redemptions?:
+    | {
+        booking: number | Booking;
+        /**
+         * Amount redeemed in cents
+         */
+        amountCents: number;
+        redeemedAt: string;
+        id?: string | null;
+      }[]
+    | null;
+  /**
+   * Internal notes (e.g., "Black Friday 2024", "Influencer code")
    */
   notes?: string | null;
   updatedAt: string;
@@ -433,6 +546,10 @@ export interface PayloadLockedDocument {
     | ({
         relationTo: 'bookings';
         value: number | Booking;
+      } | null)
+    | ({
+        relationTo: 'gift-certificates';
+        value: number | GiftCertificate;
       } | null);
   globalSlug?: string | null;
   user: {
@@ -614,9 +731,57 @@ export interface BookingsSelect<T extends boolean = true> {
   status?: T;
   paymentStatus?: T;
   stripePaymentIntentId?: T;
+  giftCertificateCode?: T;
+  giftCertificateAmountCents?: T;
+  stripeAmountCents?: T;
+  originalPriceCents?: T;
   bookingDate?: T;
   expiresAt?: T;
   checkedIn?: T;
+  notes?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "gift-certificates_select".
+ */
+export interface GiftCertificatesSelect<T extends boolean = true> {
+  code?: T;
+  type?: T;
+  status?: T;
+  expiresAt?: T;
+  initialValueCents?: T;
+  currentBalanceCents?: T;
+  currency?: T;
+  discountType?: T;
+  discountValue?: T;
+  maxUses?: T;
+  currentUses?: T;
+  purchaser?:
+    | T
+    | {
+        email?: T;
+        firstName?: T;
+        lastName?: T;
+        phone?: T;
+      };
+  recipient?:
+    | T
+    | {
+        email?: T;
+        name?: T;
+        personalMessage?: T;
+      };
+  stripePaymentIntentId?: T;
+  redemptions?:
+    | T
+    | {
+        booking?: T;
+        amountCents?: T;
+        redeemedAt?: T;
+        id?: T;
+      };
   notes?: T;
   updatedAt?: T;
   createdAt?: T;

@@ -2,7 +2,13 @@ import { getPayload } from 'payload'
 import config from '@payload-config'
 import { NextRequest, NextResponse } from 'next/server'
 import Stripe from 'stripe'
-import { sendBookingConfirmationEmail, sendCourseConfirmationEmail } from '@/lib/email'
+import {
+  sendBookingConfirmationEmail,
+  sendCourseConfirmationEmail,
+  sendGiftCertificateToRecipient,
+  sendGiftCertificatePurchaseConfirmation,
+} from '@/lib/email'
+import { createGiftCertificateService } from '@/services/gift-certificates'
 import { logError, logInfo, logDebug } from '@/lib/logger'
 
 // Disable body parsing to get raw body for webhook signature verification
@@ -62,13 +68,82 @@ export async function POST(request: NextRequest) {
     switch (event.type) {
       case 'checkout.session.completed': {
         const session = event.data.object as Stripe.Checkout.Session
+        const purchaseType = session.metadata?.purchaseType
 
-        // Extract booking metadata
+        // Handle gift certificate purchase
+        if (purchaseType === 'gift_certificate') {
+          const giftCertificateId = session.metadata?.giftCertificateId
+          const locale = (session.metadata?.locale as 'en' | 'es') || 'en'
+
+          if (!giftCertificateId) {
+            logError('No gift certificate ID in session metadata', new Error('Missing giftCertificateId'))
+            return NextResponse.json({ error: 'Missing gift certificate ID' }, { status: 400 })
+          }
+
+          // Check if already activated (idempotency)
+          const existingCert = await payload.findByID({
+            collection: 'gift-certificates',
+            id: parseInt(giftCertificateId, 10),
+          })
+
+          if (existingCert?.status === 'active') {
+            logInfo('Gift certificate already active, skipping duplicate webhook', { giftCertificateId })
+            return NextResponse.json({ received: true }, { status: 200 })
+          }
+
+          // Activate gift certificate
+          const giftCert = await payload.update({
+            collection: 'gift-certificates',
+            id: parseInt(giftCertificateId, 10),
+            data: {
+              status: 'active',
+              stripePaymentIntentId: session.payment_intent as string,
+            },
+          })
+
+          // Send emails
+          try {
+            await sendGiftCertificateToRecipient({
+              code: giftCert.code,
+              amountCents: giftCert.initialValueCents || 0,
+              currency: giftCert.currency || 'eur',
+              expiresAt: giftCert.expiresAt || '',
+              recipientEmail: giftCert.recipient?.email || '',
+              recipientName: giftCert.recipient?.name || '',
+              personalMessage: giftCert.recipient?.personalMessage || '',
+              purchaserName: `${giftCert.purchaser?.firstName || ''} ${giftCert.purchaser?.lastName || ''}`.trim(),
+              locale,
+            })
+
+            await sendGiftCertificatePurchaseConfirmation({
+              code: giftCert.code,
+              amountCents: giftCert.initialValueCents || 0,
+              currency: giftCert.currency || 'eur',
+              purchaserEmail: giftCert.purchaser?.email || '',
+              purchaserName: `${giftCert.purchaser?.firstName || ''} ${giftCert.purchaser?.lastName || ''}`.trim(),
+              recipientEmail: giftCert.recipient?.email || '',
+              recipientName: giftCert.recipient?.name || '',
+              locale,
+            })
+          } catch (emailError) {
+            logError('Failed to send gift certificate emails', emailError, { giftCertificateId })
+            // Don't fail the webhook if email fails
+          }
+
+          logInfo('Gift certificate activated', { giftCertificateId, code: giftCert.code })
+          break
+        }
+
+        // Handle regular booking
         const bookingId = session.metadata?.bookingId
         const bookingType = (session.metadata?.bookingType || 'class') as 'class' | 'course'
         const classId = session.metadata?.classId
         const sessionIds = session.metadata?.sessionIds // comma-separated
         const locale = (session.metadata?.locale as 'en' | 'es') || 'en'
+        const giftCode = session.metadata?.giftCode
+        const giftDiscountCents = session.metadata?.giftDiscountCents
+          ? parseInt(session.metadata.giftDiscountCents, 10)
+          : undefined
 
         if (!bookingId) {
           logError('No booking ID in session metadata', new Error('Missing booking ID'))
@@ -90,15 +165,42 @@ export async function POST(request: NextRequest) {
         }
 
         // Update booking to confirmed and paid
+        const bookingUpdateData: Record<string, unknown> = {
+          status: 'confirmed',
+          paymentStatus: 'paid',
+          stripePaymentIntentId: session.payment_intent as string,
+        }
+
+        // Add gift code info if present
+        if (giftCode && giftDiscountCents) {
+          bookingUpdateData.giftCertificateCode = giftCode
+          bookingUpdateData.giftCertificateAmountCents = giftDiscountCents
+          bookingUpdateData.stripeAmountCents = (session.amount_total || 0)
+        }
+
         const booking = await payload.update({
           collection: 'bookings',
           id: parseInt(bookingId, 10),
-          data: {
-            status: 'confirmed',
-            paymentStatus: 'paid',
-            stripePaymentIntentId: session.payment_intent as string,
-          },
+          data: bookingUpdateData,
         })
+
+        // Apply gift code if used
+        if (giftCode && giftDiscountCents) {
+          const giftService = createGiftCertificateService(payload)
+          const applyResult = await giftService.applyCode({
+            code: giftCode,
+            bookingId: parseInt(bookingId, 10),
+            amountCents: giftDiscountCents,
+          })
+
+          if (!applyResult.success) {
+            logError('Failed to apply gift code', new Error(applyResult.error || 'Unknown error'), {
+              bookingId,
+              giftCode,
+              giftDiscountCents,
+            })
+          }
+        }
 
         // Send confirmation email based on booking type
         try {
@@ -168,7 +270,28 @@ export async function POST(request: NextRequest) {
 
       case 'checkout.session.expired': {
         const session = event.data.object as Stripe.Checkout.Session
+        const purchaseType = session.metadata?.purchaseType
 
+        // Handle expired gift certificate purchase
+        if (purchaseType === 'gift_certificate') {
+          const giftCertificateId = session.metadata?.giftCertificateId
+
+          if (giftCertificateId) {
+            // Delete pending gift certificate
+            try {
+              await payload.delete({
+                collection: 'gift-certificates',
+                id: parseInt(giftCertificateId, 10),
+              })
+              logInfo('Expired gift certificate checkout, deleted pending certificate', { giftCertificateId })
+            } catch (deleteError) {
+              logError('Failed to delete expired gift certificate', deleteError, { giftCertificateId })
+            }
+          }
+          return NextResponse.json({ received: true }, { status: 200 })
+        }
+
+        // Handle expired booking checkout
         const bookingId = session.metadata?.bookingId
         const sessionIds = session.metadata?.sessionIds // comma-separated
         const numberOfPeople = parseInt(session.metadata?.numberOfPeople || '0', 10)

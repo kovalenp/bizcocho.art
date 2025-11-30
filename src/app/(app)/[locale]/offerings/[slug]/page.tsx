@@ -328,6 +328,7 @@ export default async function OfferingDetailPage({ params }: Props) {
                   ...sessions.docs.map((s) => s.availableSpots ?? classDoc.maxCapacity ?? 10)
                 )}
                 locale={locale}
+                messages={messages}
               />
             </div>
           </div>

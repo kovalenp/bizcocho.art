@@ -4,6 +4,7 @@ import { useState } from 'react'
 import type { Class, Session } from '@/payload-types'
 import type { Messages } from '@/i18n/messages'
 import { BookingContactForm } from './BookingContactForm'
+import { GiftCodeInput } from './GiftCodeInput'
 
 type BookingWidgetProps = {
   classTemplate: Class
@@ -35,6 +36,11 @@ export function BookingWidget({
 }: BookingWidgetProps) {
   const [submitStatus, setSubmitStatus] = useState<'idle' | 'success' | 'error' | 'loading'>('idle')
   const [numberOfPeople, setNumberOfPeople] = useState(1)
+  const [giftDiscount, setGiftDiscount] = useState<{
+    code: string
+    discountCents: number
+    remainingToPayCents: number
+  } | null>(null)
 
   const selectedSession = classSessions.find((s) => s.id.toString() === selectedSessionId)
   const availableSpots = selectedSession
@@ -44,7 +50,10 @@ export function BookingWidget({
     : 0
 
   const pricePerPerson = (classTemplate.priceCents || 0) / 100
-  const totalPrice = pricePerPerson * numberOfPeople
+  const totalPriceCents = (classTemplate.priceCents || 0) * numberOfPeople
+  const totalPrice = totalPriceCents / 100
+  const discountedPriceCents = giftDiscount ? giftDiscount.remainingToPayCents : totalPriceCents
+  const discountedPrice = discountedPriceCents / 100
 
   const handleSubmit = async (data: BookingFormData) => {
     setSubmitStatus('loading')
@@ -64,6 +73,7 @@ export function BookingWidget({
           phone: data.phone,
           numberOfPeople: data.numberOfPeople,
           locale: locale,
+          giftCode: giftDiscount?.code,
         }),
       })
 
@@ -74,6 +84,28 @@ export function BookingWidget({
         const errorMsg = result.error || 'Checkout session creation failed'
         console.error('Checkout API error:', errorMsg, result)
         throw new Error(errorMsg)
+      }
+
+      // Handle gift-only checkout (no Stripe payment needed)
+      if (result.giftOnlyCheckout && result.checkoutData) {
+        const giftOnlyResponse = await fetch('/api/checkout/gift-only', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(result.checkoutData),
+        })
+
+        const giftOnlyResult = await giftOnlyResponse.json()
+
+        if (!giftOnlyResponse.ok) {
+          throw new Error(giftOnlyResult.error || 'Gift-only checkout failed')
+        }
+
+        if (giftOnlyResult.redirectUrl) {
+          window.location.href = giftOnlyResult.redirectUrl
+        } else {
+          setSubmitStatus('success')
+        }
+        return
       }
 
       if (result.checkoutUrl) {
@@ -123,14 +155,33 @@ export function BookingWidget({
             <div className="flex items-baseline justify-between">
               <div>
                 <div className="text-sm text-gray-600 mb-1">Total Price</div>
-                <div className="text-3xl font-bold text-primary">€{totalPrice.toFixed(2)}</div>
+                {giftDiscount ? (
+                  <div>
+                    <div className="text-lg text-gray-400 line-through">€{totalPrice.toFixed(2)}</div>
+                    <div className="text-3xl font-bold text-primary">
+                      {discountedPriceCents === 0 ? 'FREE' : `€${discountedPrice.toFixed(2)}`}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-3xl font-bold text-primary">€{totalPrice.toFixed(2)}</div>
+                )}
               </div>
-              {numberOfPeople > 1 && (
+              {numberOfPeople > 1 && !giftDiscount && (
                 <div className="text-sm text-gray-500">
                   €{pricePerPerson.toFixed(2)} × {numberOfPeople}
                 </div>
               )}
             </div>
+          </div>
+
+          {/* Gift Code Input */}
+          <div className="mb-6">
+            <GiftCodeInput
+              totalCents={totalPriceCents}
+              onDiscountApplied={(discount) => setGiftDiscount(discount)}
+              onDiscountRemoved={() => setGiftDiscount(null)}
+              messages={messages}
+            />
           </div>
 
           {/* Error Message */}

@@ -1,6 +1,8 @@
 'use client'
 
 import { useState } from 'react'
+import { GiftCodeInput } from '@/components/booking/GiftCodeInput'
+import type { Messages } from '@/i18n/messages'
 
 type CourseBookingButtonProps = {
   classId: number // unified: always classId
@@ -9,6 +11,7 @@ type CourseBookingButtonProps = {
   maxCapacity: number
   availableSpots: number
   locale: 'en' | 'es'
+  messages: Messages
 }
 
 type BookingFormData = {
@@ -26,6 +29,7 @@ export function CourseBookingButton({
   maxCapacity,
   availableSpots,
   locale,
+  messages,
 }: CourseBookingButtonProps) {
   const [showForm, setShowForm] = useState(false)
   const [formData, setFormData] = useState<BookingFormData>({
@@ -37,10 +41,18 @@ export function CourseBookingButton({
   })
   const [status, setStatus] = useState<'idle' | 'loading' | 'error'>('idle')
   const [errorMessage, setErrorMessage] = useState('')
+  const [giftDiscount, setGiftDiscount] = useState<{
+    code: string
+    discountCents: number
+    remainingToPayCents: number
+  } | null>(null)
 
   const currencySymbol = currency === 'eur' ? '€' : '$'
   const pricePerPerson = priceCents / 100
-  const totalPrice = pricePerPerson * formData.numberOfPeople
+  const totalPriceCents = priceCents * formData.numberOfPeople
+  const totalPrice = totalPriceCents / 100
+  const discountedPriceCents = giftDiscount ? giftDiscount.remainingToPayCents : totalPriceCents
+  const discountedPrice = discountedPriceCents / 100
   const spotsAvailable = availableSpots > 0 ? availableSpots : maxCapacity
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -58,6 +70,7 @@ export function CourseBookingButton({
           // No sessionId - course booking books all sessions
           ...formData,
           locale,
+          giftCode: giftDiscount?.code,
         }),
       })
 
@@ -65,6 +78,26 @@ export function CourseBookingButton({
 
       if (!response.ok) {
         throw new Error(result.error || 'Booking failed')
+      }
+
+      // Handle gift-only checkout (no Stripe payment needed)
+      if (result.giftOnlyCheckout && result.checkoutData) {
+        const giftOnlyResponse = await fetch('/api/checkout/gift-only', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(result.checkoutData),
+        })
+
+        const giftOnlyResult = await giftOnlyResponse.json()
+
+        if (!giftOnlyResponse.ok) {
+          throw new Error(giftOnlyResult.error || 'Gift-only checkout failed')
+        }
+
+        if (giftOnlyResult.redirectUrl) {
+          window.location.href = giftOnlyResult.redirectUrl
+        }
+        return
       }
 
       if (result.checkoutUrl) {
@@ -125,16 +158,39 @@ export function CourseBookingButton({
             <div className="text-sm text-gray-600">
               {locale === 'es' ? 'Precio Total' : 'Total Price'}
             </div>
-            <div className="text-2xl font-bold text-primary">
-              {currencySymbol}{totalPrice.toFixed(2)}
-            </div>
+            {giftDiscount ? (
+              <div>
+                <div className="text-lg text-gray-400 line-through">
+                  {currencySymbol}{totalPrice.toFixed(2)}
+                </div>
+                <div className="text-2xl font-bold text-primary">
+                  {discountedPriceCents === 0
+                    ? (locale === 'es' ? 'GRATIS' : 'FREE')
+                    : `${currencySymbol}${discountedPrice.toFixed(2)}`}
+                </div>
+              </div>
+            ) : (
+              <div className="text-2xl font-bold text-primary">
+                {currencySymbol}{totalPrice.toFixed(2)}
+              </div>
+            )}
           </div>
-          {formData.numberOfPeople > 1 && (
+          {formData.numberOfPeople > 1 && !giftDiscount && (
             <div className="text-sm text-gray-500">
               {currencySymbol}{pricePerPerson.toFixed(2)} × {formData.numberOfPeople}
             </div>
           )}
         </div>
+      </div>
+
+      {/* Gift Code Input */}
+      <div className="mb-4">
+        <GiftCodeInput
+          totalCents={totalPriceCents}
+          onDiscountApplied={(discount) => setGiftDiscount(discount)}
+          onDiscountRemoved={() => setGiftDiscount(null)}
+          messages={messages}
+        />
       </div>
 
       {status === 'error' && (

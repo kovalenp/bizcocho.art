@@ -58,6 +58,61 @@ type MessageStructure = {
     requiredField: string
     invalidEmail: string
   }
+  giftCode: {
+    placeholder: string
+    apply: string
+    remove: string
+    validating: string
+    discountApplied: string
+    youSave: string
+    remaining: string
+    fullyCovered: string
+    invalid: string
+  }
+  giftCertificates: {
+    pageTitle: string
+    pageSubtitle: string
+    selectAmount: string
+    customAmount: string
+    customAmountPlaceholder: string
+    minAmount: string
+    maxAmount: string
+    recipientInfo: string
+    recipientName: string
+    recipientEmail: string
+    personalMessage: string
+    personalMessagePlaceholder: string
+    yourInfo: string
+    yourName: string
+    yourEmail: string
+    preview: string
+    previewDescription: string
+    purchaseButton: string
+    purchasing: string
+    validity: string
+    validityMonths: string
+    termsTitle: string
+    termsText: string
+    successTitle: string
+    successMessage: string
+    emailSent: string
+    yourCode: string
+    checkBalance: string
+    checkBalanceTitle: string
+    enterCode: string
+    check: string
+    checking: string
+    balanceTitle: string
+    currentBalance: string
+    originalValue: string
+    expiresOn: string
+    status: string
+    statusActive: string
+    statusPartial: string
+    statusRedeemed: string
+    statusExpired: string
+    codeNotFound: string
+  }
 }
 
 const messagesByLocale: Record<Locale, MessageStructure> = {

@@ -3,6 +3,7 @@ import config from '@payload-config'
 import { NextRequest, NextResponse } from 'next/server'
 import Stripe from 'stripe'
 import { logError } from '@/lib/logger'
+import { createGiftCertificateService } from '@/services/gift-certificates'
 
 type CheckoutRequestBody = {
   classId: string // Required: the class/course ID
@@ -13,6 +14,7 @@ type CheckoutRequestBody = {
   phone: string
   numberOfPeople: number
   locale?: string
+  giftCode?: string // Optional: gift certificate or promo code
 }
 
 function getStripe() {
@@ -28,7 +30,7 @@ export async function POST(request: NextRequest) {
   const stripe = getStripe()
   try {
     const body: CheckoutRequestBody = await request.json()
-    const { classId, sessionId, firstName, lastName, email, phone, numberOfPeople, locale = 'en' } = body
+    const { classId, sessionId, firstName, lastName, email, phone, numberOfPeople, locale = 'en', giftCode } = body
 
     // Validate required fields
     if (!classId || !firstName || !lastName || !email || !phone || !numberOfPeople) {
@@ -126,6 +128,22 @@ export async function POST(request: NextRequest) {
     const totalPriceCents = (classDoc.priceCents || 0) * numberOfPeople
     const currency = classDoc.currency || 'eur'
 
+    // Handle gift code discount
+    let giftDiscountCents = 0
+    let amountToChargeCents = totalPriceCents
+
+    if (giftCode) {
+      const giftService = createGiftCertificateService(payload)
+      const discountResult = await giftService.calculateDiscount(giftCode, totalPriceCents)
+
+      if ('error' in discountResult) {
+        return NextResponse.json({ error: discountResult.error }, { status: 400 })
+      }
+
+      giftDiscountCents = discountResult.discountCents
+      amountToChargeCents = discountResult.remainingToPayCents
+    }
+
     // Reserve spots on all sessions
     const sessionIds = sessionsToBook.map((s) => s.id)
     const updatePromises = sessionsToBook.map((session) => {
@@ -172,6 +190,29 @@ export async function POST(request: NextRequest) {
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString()
     const bookingType = classDoc.type // 'class' or 'course'
 
+    // If gift code covers full amount, redirect to gift-only checkout
+    if (giftCode && amountToChargeCents === 0) {
+      return NextResponse.json({
+        success: true,
+        giftOnlyCheckout: true,
+        redirectUrl: `/api/checkout/gift-only`,
+        checkoutData: {
+          classId: classIdNum,
+          sessionIds,
+          firstName,
+          lastName,
+          email,
+          phone,
+          numberOfPeople,
+          locale,
+          giftCode,
+          giftDiscountCents,
+          totalPriceCents,
+          bookingType,
+        },
+      })
+    }
+
     let booking
     try {
       booking = await payload.create({
@@ -188,6 +229,10 @@ export async function POST(request: NextRequest) {
           paymentStatus: 'unpaid',
           bookingDate: new Date().toISOString(),
           expiresAt,
+          // Gift code info
+          giftCertificateCode: giftCode || undefined,
+          giftCertificateAmountCents: giftDiscountCents || undefined,
+          originalPriceCents: totalPriceCents,
         },
       })
     } catch (bookingError) {
@@ -229,6 +274,15 @@ export async function POST(request: NextRequest) {
       description = `${sessionDate} at ${sessionTime} - ${numberOfPeople} ${numberOfPeople === 1 ? 'person' : 'people'}`
     }
 
+    // Build Stripe line item description with discount info
+    let stripeDescription = description
+    if (giftDiscountCents > 0) {
+      const discountFormatted = (giftDiscountCents / 100).toFixed(2)
+      stripeDescription += locale === 'es'
+        ? ` (Descuento aplicado: €${discountFormatted})`
+        : ` (Discount applied: €${discountFormatted})`
+    }
+
     // Create Stripe Checkout Session
     const stripeSession = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
@@ -238,9 +292,9 @@ export async function POST(request: NextRequest) {
             currency: currency.toLowerCase(),
             product_data: {
               name: classTitle,
-              description,
+              description: stripeDescription,
             },
-            unit_amount: totalPriceCents,
+            unit_amount: amountToChargeCents,
           },
           quantity: 1,
         },
@@ -259,6 +313,10 @@ export async function POST(request: NextRequest) {
         phone,
         numberOfPeople: numberOfPeople.toString(),
         locale,
+        // Gift code info
+        giftCode: giftCode || '',
+        giftDiscountCents: giftDiscountCents.toString(),
+        originalPriceCents: totalPriceCents.toString(),
       },
     })
 
