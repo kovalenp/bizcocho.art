@@ -45,9 +45,11 @@ export function useBookingProcess(
   const [giftDiscount, setGiftDiscount] = useState<GiftDiscount | null>(null)
   const [numberOfPeople, setNumberOfPeople] = useState(1)
 
-  // Calculate prices
+  // Calculate prices dynamically (never use stale cached values)
   const totalPriceCents = (classTemplate.priceCents || 0) * numberOfPeople
-  const discountedPriceCents = giftDiscount ? giftDiscount.remainingToPayCents : totalPriceCents
+  const discountedPriceCents = giftDiscount
+    ? Math.max(0, totalPriceCents - giftDiscount.discountCents)
+    : totalPriceCents
 
   const applyGiftCode = useCallback((discount: GiftDiscount) => {
     setGiftDiscount(discount)

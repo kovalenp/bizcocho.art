@@ -55,6 +55,11 @@ describe('PaymentService', () => {
     create: ReturnType<typeof vi.fn>
     update: ReturnType<typeof vi.fn>
     delete: ReturnType<typeof vi.fn>
+    db: {
+      beginTransaction: ReturnType<typeof vi.fn>
+      commitTransaction: ReturnType<typeof vi.fn>
+      rollbackTransaction: ReturnType<typeof vi.fn>
+    }
   }
   let mockStripeInstance: {
     checkout: { sessions: { create: ReturnType<typeof vi.fn> } }
@@ -116,6 +121,11 @@ describe('PaymentService', () => {
       create: vi.fn(),
       update: vi.fn(),
       delete: vi.fn(),
+      db: {
+        beginTransaction: vi.fn().mockResolvedValue('txn-123'),
+        commitTransaction: vi.fn().mockResolvedValue(undefined),
+        rollbackTransaction: vi.fn().mockResolvedValue(undefined),
+      },
     }
 
     // Get the mock Stripe instance
@@ -300,7 +310,14 @@ describe('PaymentService', () => {
 
         expect(result.success).toBe(true)
         expect(result.action).toBe('booking_confirmed')
-        expect(mockBookingService.confirmBooking).toHaveBeenCalledWith(1, 'pi_123', expect.any(Object))
+        expect(mockPayload.db.beginTransaction).toHaveBeenCalled()
+        expect(mockBookingService.confirmBooking).toHaveBeenCalledWith(
+          1,
+          'pi_123',
+          expect.any(Object),
+          expect.objectContaining({ transactionID: 'txn-123' })
+        )
+        expect(mockPayload.db.commitTransaction).toHaveBeenCalledWith('txn-123')
       })
 
       it('should apply gift code when present', async () => {
@@ -329,6 +346,7 @@ describe('PaymentService', () => {
           code: 'GIFT-1234',
           bookingId: 1,
           amountCents: 1000,
+          req: expect.objectContaining({ transactionID: 'txn-123' }),
         })
       })
 

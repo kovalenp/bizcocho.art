@@ -8,6 +8,14 @@ type MessageStructure = {
     openCms: string
     all: string
     backToClasses: string
+    or: string
+    free: string
+    session: string
+    sessions: string
+    person: string
+    people: string
+    at: string
+    backToHome: string
   }
   nav: {
     events: string
@@ -29,14 +37,18 @@ type MessageStructure = {
   classDetail: {
     duration: string
     minutes: string
+    minutesPerSession: string
     location: string
     capacity: string
+    participants: string
     price: string
     instructor: string
     about: string
     gallery: string
     bookNow: string
     spotsAvailable: string
+    description: string
+    aboutInstructor: string
   }
   booking: {
     title: string
@@ -57,6 +69,16 @@ type MessageStructure = {
     error: string
     requiredField: string
     invalidEmail: string
+    processing: string
+    continueToPayment: string
+    totalPrice: string
+  }
+  cancel: {
+    title: string
+    message: string
+    tryAgainTitle: string
+    tryAgainMessage: string
+    browseOfferings: string
   }
   giftCode: {
     placeholder: string
@@ -112,6 +134,39 @@ type MessageStructure = {
     statusRedeemed: string
     statusExpired: string
     codeNotFound: string
+    whatsNext: string
+    recipientWillReceive: string
+    youWillReceiveConfirmation: string
+    codeCanBeUsed: string
+    validFor12Months: string
+    buyAnother: string
+    productName: string
+  }
+  about: {
+    metaDescription: string
+    ourStory: string
+    ourStoryP1: string
+    ourStoryP2: string
+    contactUs: string
+    location: string
+    email: string
+    phone: string
+    hours: string
+    hoursWeekday: string
+    hoursSunday: string
+  }
+  course: {
+    full: string
+    bookEntireCourse: string
+    bookCourse: string
+    forEntireCourse: string
+    duration: string
+    schedule: string
+    courseDates: string
+    fullEnrollment: string
+  }
+  payment: {
+    discountApplied: string
   }
 }
 

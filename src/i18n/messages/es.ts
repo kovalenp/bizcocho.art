@@ -4,6 +4,14 @@ export const messages = {
     openCms: 'Abrir CMS (Payload)',
     all: 'Todos',
     backToClasses: 'Volver a Clases',
+    or: 'o',
+    free: 'GRATIS',
+    session: 'Sesión',
+    sessions: 'sesiones',
+    person: 'persona',
+    people: 'personas',
+    at: 'a las',
+    backToHome: 'Volver al Inicio',
   },
 
   // Navigation
@@ -31,14 +39,18 @@ export const messages = {
   classDetail: {
     duration: 'Duración',
     minutes: 'minutos',
+    minutesPerSession: 'minutos por sesión',
     location: 'Ubicación',
     capacity: 'Capacidad',
+    participants: 'participantes',
     price: 'Precio',
     instructor: 'Instructor',
     about: 'Sobre esta clase',
     gallery: 'Galería',
     bookNow: 'Reservar Ahora',
     spotsAvailable: 'plazas disponibles',
+    description: 'Descripción',
+    aboutInstructor: 'Sobre el Instructor',
   },
 
   // Booking form
@@ -61,6 +73,18 @@ export const messages = {
     error: 'Error al crear la reserva. Por favor, inténtalo de nuevo.',
     requiredField: 'Este campo es obligatorio',
     invalidEmail: 'Por favor, ingresa un correo electrónico válido',
+    processing: 'Procesando...',
+    continueToPayment: 'Continuar al Pago',
+    totalPrice: 'Precio Total',
+  },
+
+  // Cancel page
+  cancel: {
+    title: 'Reserva Cancelada',
+    message: 'Tu reserva ha sido cancelada y no se ha procesado ningún pago. Los lugares han sido liberados.',
+    tryAgainTitle: '¿Quieres intentarlo de nuevo?',
+    tryAgainMessage: 'Si cambiaste de opinión o tuviste algún problema, puedes volver a la página y completar tu reserva.',
+    browseOfferings: 'Ver Ofertas',
   },
 
   // Gift code input
@@ -120,5 +144,44 @@ export const messages = {
     statusRedeemed: 'Totalmente Canjeado',
     statusExpired: 'Expirado',
     codeNotFound: 'Certificado no encontrado. Por favor verifica el código e inténtalo de nuevo.',
+    whatsNext: '¿Qué pasa ahora?',
+    recipientWillReceive: 'El destinatario recibirá un email con el certificado de regalo',
+    youWillReceiveConfirmation: 'Tú también recibirás una confirmación de compra',
+    codeCanBeUsed: 'El código puede usarse al reservar cualquier clase',
+    validFor12Months: 'El certificado es válido por 12 meses',
+    buyAnother: 'Comprar Otro',
+    productName: 'Certificado de Regalo',
+  },
+
+  // About page
+  about: {
+    metaDescription: 'Conoce bizcocho.art, tu espacio creativo en Madrid. Clases de arte para todos los niveles en Calle de las Artes, 123.',
+    ourStory: 'Nuestra Historia',
+    ourStoryP1: 'bizcocho.art nació de la pasión por hacer el arte accesible para todos. Creemos que la creatividad es un regalo universal, y nuestro objetivo es proporcionar un espacio acogedor donde personas de todos los niveles puedan explorar su potencial artístico.',
+    ourStoryP2: 'Ya seas un principiante completo o un artista experimentado, nuestras clases están diseñadas para inspirar, educar y crear una comunidad de entusiastas del arte.',
+    contactUs: 'Contáctanos',
+    location: 'Ubicación',
+    email: 'Correo Electrónico',
+    phone: 'Teléfono',
+    hours: 'Horario',
+    hoursWeekday: 'Lunes - Sábado: 10:00 - 20:00',
+    hoursSunday: 'Domingo: Cerrado',
+  },
+
+  // Course related
+  course: {
+    full: 'Curso completo',
+    bookEntireCourse: 'Reservar Curso Completo',
+    bookCourse: 'Reservar Curso',
+    forEntireCourse: 'por curso completo',
+    duration: 'Duración:',
+    schedule: 'Horario:',
+    courseDates: 'Fechas del Curso:',
+    fullEnrollment: 'Inscripción completa al curso',
+  },
+
+  // Payment related
+  payment: {
+    discountApplied: 'Descuento aplicado:',
   },
 } as const

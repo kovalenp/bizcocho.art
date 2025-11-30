@@ -50,6 +50,11 @@ export function BookingWidget({
 
   const handleNumberOfPeopleChange = (newNumber: number) => {
     setNumberOfPeople(newNumber)
+    // Clear gift discount when quantity changes - forces re-validation
+    // This ensures discount is recalculated for new total (gift card balance may allow more)
+    if (giftDiscount) {
+      removeGiftCode()
+    }
   }
 
   return (
@@ -73,9 +78,10 @@ export function BookingWidget({
             hasDiscount={!!giftDiscount}
           />
 
-          {/* Gift Code Input */}
+          {/* Gift Code Input - key forces remount when numberOfPeople changes */}
           <div className="mb-6">
             <GiftCodeInput
+              key={numberOfPeople}
               totalCents={totalPriceCents}
               onDiscountApplied={applyGiftCode}
               onDiscountRemoved={removeGiftCode}

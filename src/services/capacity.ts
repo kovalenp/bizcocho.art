@@ -1,4 +1,4 @@
-import type { Payload } from 'payload'
+import type { Payload, PayloadRequest } from 'payload'
 import { logError } from '../lib/logger'
 
 export type ReservationResult = {
@@ -22,22 +22,26 @@ export class CapacityService {
 
   /**
    * Reserve spots on one or more sessions.
-   * Uses verify-and-rollback pattern to prevent overbooking.
+   * Uses verify-and-rollback pattern within a transaction to prevent overbooking.
    */
   async reserveSpots(
     sessionIds: number[],
-    numberOfPeople: number
+    numberOfPeople: number,
+    req?: PayloadRequest
   ): Promise<ReservationResult> {
     if (sessionIds.length === 0) {
       return { success: false, error: 'No sessions provided' }
     }
 
+    const payload = req?.payload || this.payload
+
     try {
-      // Fetch all sessions
-      const sessions = await this.payload.find({
+      // Fetch all sessions (within transaction if req provided)
+      const sessions = await payload.find({
         collection: 'sessions',
         where: { id: { in: sessionIds } },
         limit: sessionIds.length,
+        req,
       })
 
       if (sessions.docs.length !== sessionIds.length) {
@@ -54,21 +58,28 @@ export class CapacityService {
       }
 
       // Decrement all sessions
+      // Note: In a real production environment with high concurrency,
+      // raw SQL update with "availableSpots = availableSpots - N" is preferred
+      // to avoid race conditions between read and write.
+      // However, wrapping this in a transaction (Serializable or with proper locking)
+      // mitigates most issues.
       const updatePromises = sessions.docs.map((session) => {
         const currentSpots = session.availableSpots ?? 0
-        return this.payload.update({
+        return payload.update({
           collection: 'sessions',
           id: session.id,
           data: { availableSpots: currentSpots - numberOfPeople },
+          req,
         })
       })
       await Promise.all(updatePromises)
 
-      // Verify no session went negative
-      const verifiedSessions = await this.payload.find({
+      // Verify no session went negative (CRITICAL: Must happen inside same transaction)
+      const verifiedSessions = await payload.find({
         collection: 'sessions',
         where: { id: { in: sessionIds } },
         limit: sessionIds.length,
+        req,
       })
 
       const hasNegative = verifiedSessions.docs.some(
@@ -76,13 +87,20 @@ export class CapacityService {
       )
 
       if (hasNegative) {
-        // Rollback all
+        // Rollback all (or let transaction rollback handle it if caller uses one)
+        // If we are in a transaction, throwing error triggers rollback up the chain
+        if (req?.transactionID) {
+           throw new Error('Overbooking detected (race condition)')
+        }
+
+        // Manual rollback if no transaction (fallback)
         const rollbackPromises = verifiedSessions.docs.map((session) => {
           const currentSpots = session.availableSpots ?? 0
-          return this.payload.update({
+          return payload.update({
             collection: 'sessions',
             id: session.id,
             data: { availableSpots: currentSpots + numberOfPeople },
+            req,
           })
         })
         await Promise.all(rollbackPromises)
@@ -99,22 +117,30 @@ export class CapacityService {
   /**
    * Release reserved spots on one or more sessions.
    */
-  async releaseSpots(sessionIds: number[], numberOfPeople: number): Promise<void> {
+  async releaseSpots(
+    sessionIds: number[], 
+    numberOfPeople: number,
+    req?: PayloadRequest
+  ): Promise<void> {
     if (sessionIds.length === 0) return
+    
+    const payload = req?.payload || this.payload
 
     try {
-      const sessions = await this.payload.find({
+      const sessions = await payload.find({
         collection: 'sessions',
         where: { id: { in: sessionIds } },
         limit: sessionIds.length,
+        req,
       })
 
       const updatePromises = sessions.docs.map((session) => {
         const currentSpots = session.availableSpots ?? 0
-        return this.payload.update({
+        return payload.update({
           collection: 'sessions',
           id: session.id,
           data: { availableSpots: currentSpots + numberOfPeople },
+          req,
         })
       })
 

@@ -1,9 +1,18 @@
 import Stripe from 'stripe'
-import type { Payload } from 'payload'
+import type { Payload, PayloadRequest } from 'payload'
 import type { Booking, Class, Session } from '../payload-types'
 import { createBookingService, BookingService } from './booking'
 import { createGiftCertificateService, GiftCertificateService } from './gift-certificates'
 import { logError, logInfo, logDebug } from '../lib/logger'
+import { getMessages } from '../i18n/messages'
+import type { Locale } from '../i18n/config'
+import {
+  encodeBookingMetadata,
+  decodeMetadata,
+  isBookingMetadata,
+  isGiftCertificateMetadata,
+  type RawStripeMetadata,
+} from '../lib/stripe-metadata'
 
 export type CreateCheckoutParams = {
   booking: Booking
@@ -26,6 +35,7 @@ export type WebhookResult = {
   success: boolean
   error?: string
   action?: 'booking_confirmed' | 'booking_expired' | 'gift_activated' | 'gift_expired' | 'ignored'
+  data?: Record<string, unknown>
 }
 
 /**
@@ -96,14 +106,28 @@ export class PaymentService {
       // Add discount info to description
       let stripeDescription = description
       if (giftDiscountCents && giftDiscountCents > 0) {
+        const messages = getMessages(locale as Locale)
         const discountFormatted = (giftDiscountCents / 100).toFixed(2)
-        stripeDescription += locale === 'es'
-          ? ` (Descuento aplicado: €${discountFormatted})`
-          : ` (Discount applied: €${discountFormatted})`
+        stripeDescription += ` (${messages.payment.discountApplied} €${discountFormatted})`
       }
 
-      const sessionIds = sessions.map((s) => s.id).join(',')
       const siteUrl = process.env.SITE_URL || 'http://localhost:3000'
+
+      // Build typed metadata
+      const metadata = encodeBookingMetadata({
+        bookingId: booking.id,
+        bookingType,
+        classId: classDoc.id,
+        sessionIds: sessions.map((s) => s.id),
+        firstName: booking.firstName,
+        lastName: booking.lastName,
+        phone: booking.phone,
+        numberOfPeople: booking.numberOfPeople,
+        locale: locale as 'en' | 'es',
+        giftCode,
+        giftDiscountCents,
+        originalPriceCents: booking.originalPriceCents ?? undefined,
+      })
 
       const stripeSession = await this.stripe.checkout.sessions.create({
         payment_method_types: ['card'],
@@ -124,20 +148,7 @@ export class PaymentService {
         success_url: `${siteUrl}/${locale}/booking/success?session_id={CHECKOUT_SESSION_ID}`,
         cancel_url: `${siteUrl}/${locale}/booking/cancel?session_id={CHECKOUT_SESSION_ID}`,
         customer_email: booking.email,
-        metadata: {
-          bookingId: booking.id.toString(),
-          bookingType,
-          classId: classDoc.id.toString(),
-          sessionIds,
-          firstName: booking.firstName,
-          lastName: booking.lastName,
-          phone: booking.phone,
-          numberOfPeople: booking.numberOfPeople.toString(),
-          locale,
-          giftCode: giftCode || '',
-          giftDiscountCents: (giftDiscountCents || 0).toString(),
-          originalPriceCents: (booking.originalPriceCents || 0).toString(),
-        },
+        metadata,
       })
 
       logInfo('Stripe checkout session created', {
@@ -198,91 +209,112 @@ export class PaymentService {
    * Handle successful checkout completion.
    */
   private async handleCheckoutCompleted(session: Stripe.Checkout.Session): Promise<WebhookResult> {
-    const purchaseType = session.metadata?.purchaseType
+    const metadata = decodeMetadata(session.metadata as RawStripeMetadata)
 
     // Handle gift certificate purchase
-    if (purchaseType === 'gift_certificate') {
-      return this.handleGiftCertificateActivation(session)
+    if (isGiftCertificateMetadata(metadata)) {
+      return this.handleGiftCertificateActivation(session, metadata)
     }
 
-    // Handle regular booking
-    return this.handleBookingConfirmation(session)
+    // Handle regular booking (decodeMetadata defaults to booking for backwards compatibility)
+    if (isBookingMetadata(metadata)) {
+      return this.handleBookingConfirmation(session, metadata)
+    }
+
+    // Should not reach here - decodeMetadata always returns booking or gift_certificate
+    logError('Unknown metadata format in checkout session', new Error('Invalid metadata'), {
+      sessionId: session.id,
+      metadata: session.metadata,
+    })
+    return { success: false, error: 'Invalid checkout session metadata' }
   }
 
   /**
-   * Handle booking confirmation after payment.
+   * Handle booking confirmation after payment (typed metadata).
+   * Uses transaction to ensure atomicity of confirmation and gift code application.
    */
-  private async handleBookingConfirmation(session: Stripe.Checkout.Session): Promise<WebhookResult> {
-    const bookingId = session.metadata?.bookingId
-    const giftCode = session.metadata?.giftCode
-    const giftDiscountCents = session.metadata?.giftDiscountCents
-      ? parseInt(session.metadata.giftDiscountCents, 10)
-      : undefined
+  private async handleBookingConfirmation(
+    session: Stripe.Checkout.Session,
+    metadata: ReturnType<typeof decodeMetadata> & { purchaseType: 'booking' }
+  ): Promise<WebhookResult> {
+    const { bookingId, giftCode, giftDiscountCents } = metadata
+    
+    let transactionID: string | number | null = null
+    try {
+        // Start transaction
+        transactionID = await this.payload.db.beginTransaction()
+        if (!transactionID) {
+          return { success: false, error: 'Failed to start database transaction' }
+        }
+        const req = { payload: this.payload, transactionID } as PayloadRequest
 
-    if (!bookingId) {
-      logError('No booking ID in session metadata', new Error('Missing bookingId'))
-      return { success: false, error: 'Missing booking ID' }
+        // Build additional data for confirmation
+        const additionalData: Record<string, unknown> = {}
+        if (giftCode && giftDiscountCents) {
+          additionalData.giftCertificateCode = giftCode
+          additionalData.giftCertificateAmountCents = giftDiscountCents
+          additionalData.stripeAmountCents = session.amount_total || 0
+        }
+
+        // Confirm the booking
+        const confirmResult = await this.bookingService.confirmBooking(
+          bookingId,
+          session.payment_intent as string,
+          additionalData,
+          req
+        )
+
+        if (!confirmResult.success) {
+           await this.payload.db.rollbackTransaction(transactionID)
+           return { success: false, error: confirmResult.error }
+        }
+
+        // Apply gift code if used
+        if (giftCode && giftDiscountCents) {
+          const applyResult = await this.giftService.applyCode({
+            code: giftCode,
+            bookingId,
+            amountCents: giftDiscountCents,
+            req
+          })
+
+          if (!applyResult.success) {
+            logError('Failed to apply gift code', new Error(applyResult.error || 'Unknown'), {
+              bookingId,
+              giftCode,
+            })
+            await this.payload.db.rollbackTransaction(transactionID)
+            return { success: false, error: `Failed to apply gift code: ${applyResult.error}` }
+          }
+        }
+
+        await this.payload.db.commitTransaction(transactionID)
+
+        logInfo('Booking confirmed via webhook', { bookingId })
+        // Note: Confirmation emails are sent via Payload afterChange hook on Bookings collection
+
+        return { success: true, action: 'booking_confirmed' }
+
+    } catch (error) {
+        if (transactionID) await this.payload.db.rollbackTransaction(transactionID)
+        throw error
     }
-
-    const bookingIdNum = parseInt(bookingId, 10)
-
-    // Build additional data for confirmation
-    const additionalData: Record<string, unknown> = {}
-    if (giftCode && giftDiscountCents) {
-      additionalData.giftCertificateCode = giftCode
-      additionalData.giftCertificateAmountCents = giftDiscountCents
-      additionalData.stripeAmountCents = session.amount_total || 0
-    }
-
-    // Confirm the booking
-    const confirmResult = await this.bookingService.confirmBooking(
-      bookingIdNum,
-      session.payment_intent as string,
-      additionalData
-    )
-
-    if (!confirmResult.success) {
-      return { success: false, error: confirmResult.error }
-    }
-
-    // Apply gift code if used
-    if (giftCode && giftDiscountCents) {
-      const applyResult = await this.giftService.applyCode({
-        code: giftCode,
-        bookingId: bookingIdNum,
-        amountCents: giftDiscountCents,
-      })
-
-      if (!applyResult.success) {
-        logError('Failed to apply gift code', new Error(applyResult.error || 'Unknown'), {
-          bookingId: bookingIdNum,
-          giftCode,
-        })
-        // Don't fail the webhook - booking is already confirmed
-      }
-    }
-
-    logInfo('Booking confirmed via webhook', { bookingId: bookingIdNum })
-    return { success: true, action: 'booking_confirmed' }
   }
 
   /**
    * Handle gift certificate activation after payment.
+   * Note: Activation emails are sent via Payload afterChange hook on GiftCertificates collection.
    */
-  private async handleGiftCertificateActivation(session: Stripe.Checkout.Session): Promise<WebhookResult> {
-    const giftCertificateId = session.metadata?.giftCertificateId
-
-    if (!giftCertificateId) {
-      logError('No gift certificate ID in session metadata', new Error('Missing giftCertificateId'))
-      return { success: false, error: 'Missing gift certificate ID' }
-    }
-
-    const certIdNum = parseInt(giftCertificateId, 10)
+  private async handleGiftCertificateActivation(
+    session: Stripe.Checkout.Session,
+    metadata: ReturnType<typeof decodeMetadata> & { purchaseType: 'gift_certificate' }
+  ): Promise<WebhookResult> {
+    const { giftCertificateId } = metadata
 
     // Check if already activated (idempotency)
     const existingCert = await this.payload.findByID({
       collection: 'gift-certificates',
-      id: certIdNum,
+      id: giftCertificateId,
     })
 
     if (existingCert?.status === 'active') {
@@ -290,10 +322,10 @@ export class PaymentService {
       return { success: true, action: 'gift_activated' }
     }
 
-    // Activate the certificate
+    // Activate the certificate - afterChange hook will send notifications
     await this.payload.update({
       collection: 'gift-certificates',
-      id: certIdNum,
+      id: giftCertificateId,
       data: {
         status: 'active',
         stripePaymentIntentId: session.payment_intent as string,
@@ -301,7 +333,7 @@ export class PaymentService {
     })
 
     logInfo('Gift certificate activated', { giftCertificateId })
-    return { success: true, action: 'gift_activated' }
+    return { success: true, action: 'gift_activated', data: { giftCertificateId } }
   }
 
   /**

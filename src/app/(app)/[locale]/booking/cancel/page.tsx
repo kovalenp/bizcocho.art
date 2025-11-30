@@ -5,6 +5,8 @@ import config from '@payload-config'
 import Stripe from 'stripe'
 import { createCapacityService } from '@/services/capacity'
 import { logError } from '@/lib/logger'
+import { getMessages } from '@/i18n/messages'
+import type { Locale } from '@/i18n/config'
 
 type PageProps = {
   params: Promise<{ locale: string }>
@@ -74,7 +76,7 @@ export default async function BookingCancelPage({ params, searchParams }: PagePr
     // Continue to show the page even if cleanup fails
   }
 
-  const isSpanish = locale === 'es'
+  const messages = getMessages(locale as Locale)
 
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
@@ -101,23 +103,19 @@ export default async function BookingCancelPage({ params, searchParams }: PagePr
 
           {/* Cancel Message */}
           <h1 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">
-            {isSpanish ? 'Reserva Cancelada' : 'Booking Cancelled'}
+            {messages.cancel.title}
           </h1>
           <p className="text-lg text-gray-600 mb-8">
-            {isSpanish
-              ? 'Tu reserva ha sido cancelada y no se ha procesado ningún pago. Los lugares han sido liberados.'
-              : 'Your booking has been cancelled and no payment was processed. The spots have been released back to availability.'}
+            {messages.cancel.message}
           </p>
 
           {/* Information Box */}
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 mb-8 text-left">
             <h2 className="font-semibold text-blue-900 mb-2">
-              {isSpanish ? '¿Quieres intentarlo de nuevo?' : 'Want to try again?'}
+              {messages.cancel.tryAgainTitle}
             </h2>
             <p className="text-blue-800 text-sm">
-              {isSpanish
-                ? 'Si cambiaste de opinión o tuviste algún problema, puedes volver a la página y completar tu reserva.'
-                : 'If you changed your mind or encountered an issue, you can return to the page and complete your booking.'}
+              {messages.cancel.tryAgainMessage}
             </p>
           </div>
 
@@ -127,7 +125,7 @@ export default async function BookingCancelPage({ params, searchParams }: PagePr
               href={`/${locale}`}
               className="inline-flex items-center justify-center px-6 py-3 border border-transparent text-base font-medium rounded-md text-white bg-primary hover:bg-primary/90 transition-colors"
             >
-              {isSpanish ? 'Ver Ofertas' : 'Browse Offerings'}
+              {messages.cancel.browseOfferings}
             </Link>
           </div>
         </div>

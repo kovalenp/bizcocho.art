@@ -1,4 +1,4 @@
-import type { Payload } from 'payload'
+import type { Payload, PayloadRequest } from 'payload'
 import type { GiftCertificate } from '../payload-types'
 import { normalizeCode, formatCode } from '../lib/gift-codes'
 import { logError, logInfo } from '../lib/logger'
@@ -169,15 +169,18 @@ export class GiftCertificateService {
     code: string
     bookingId: number
     amountCents: number
+    req?: PayloadRequest
   }): Promise<ApplyCodeResult> {
-    const { code, bookingId, amountCents } = params
+    const { code, bookingId, amountCents, req } = params
+    const payload = req?.payload || this.payload
     const normalizedCode = formatCode(normalizeCode(code))
 
     try {
-      const result = await this.payload.find({
+      const result = await payload.find({
         collection: 'gift-certificates',
         where: { code: { equals: normalizedCode } },
         limit: 1,
+        req,
       })
 
       if (result.docs.length === 0) {
@@ -206,7 +209,7 @@ export class GiftCertificateService {
           redeemedAt: new Date().toISOString(),
         })
 
-        await this.payload.update({
+        await payload.update({
           collection: 'gift-certificates',
           id: cert.id,
           data: {
@@ -214,6 +217,7 @@ export class GiftCertificateService {
             status: newStatus,
             redemptions,
           },
+          req,
         })
 
         logInfo('Gift certificate applied', {
@@ -243,7 +247,7 @@ export class GiftCertificateService {
           redeemedAt: new Date().toISOString(),
         })
 
-        await this.payload.update({
+        await payload.update({
           collection: 'gift-certificates',
           id: cert.id,
           data: {
@@ -251,6 +255,7 @@ export class GiftCertificateService {
             status: newStatus,
             redemptions,
           },
+          req,
         })
 
         logInfo('Promo code applied', {
@@ -278,15 +283,18 @@ export class GiftCertificateService {
     code: string
     bookingId: number
     amountCents: number
+    req?: PayloadRequest
   }): Promise<ApplyCodeResult> {
-    const { code, bookingId } = params
+    const { code, bookingId, req } = params
+    const payload = req?.payload || this.payload
     const normalizedCode = formatCode(normalizeCode(code))
 
     try {
-      const result = await this.payload.find({
+      const result = await payload.find({
         collection: 'gift-certificates',
         where: { code: { equals: normalizedCode } },
         limit: 1,
+        req,
       })
 
       if (result.docs.length === 0) {
@@ -323,7 +331,7 @@ export class GiftCertificateService {
           }
         )
 
-        await this.payload.update({
+        await payload.update({
           collection: 'gift-certificates',
           id: cert.id,
           data: {
@@ -331,6 +339,7 @@ export class GiftCertificateService {
             status: newStatus,
             redemptions,
           },
+          req,
         })
 
         logInfo('Promo code usage reverted', {

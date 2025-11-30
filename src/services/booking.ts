@@ -1,4 +1,4 @@
-import type { Payload } from 'payload'
+import type { Payload, PayloadRequest } from 'payload'
 import type { Booking } from '../payload-types'
 import { createCapacityService, CapacityService } from './capacity'
 import { logError, logInfo } from '../lib/logger'
@@ -15,6 +15,7 @@ export type CreateBookingParams = {
   giftCertificateCode?: string
   giftCertificateAmountCents?: number
   originalPriceCents?: number
+  req?: PayloadRequest
 }
 
 export type CreateBookingResult = {
@@ -52,7 +53,13 @@ export class BookingService {
 
   /**
    * Create a pending booking with session capacity reserved.
-   * Capacity is reserved immediately at checkout time.
+   * Uses database transactions to ensure atomicity.
+   *
+   * Flow:
+   * 1. Start Transaction
+   * 2. Reserve capacity (locks/updates sessions)
+   * 3. Create booking
+   * 4. Commit (or Rollback on any failure)
    */
   async createPendingBooking(params: CreateBookingParams): Promise<CreateBookingResult> {
     const {
@@ -67,43 +74,72 @@ export class BookingService {
       giftCertificateCode,
       giftCertificateAmountCents,
       originalPriceCents,
+      req: passedReq,
     } = params
 
+    const payload = passedReq?.payload || this.payload
+
+    // Use existing transaction or start a new one
+    let req = passedReq
+    let ownTransactionID: string | number | null = null
+
+    if (!req || !req.transactionID) {
+      try {
+        ownTransactionID = await payload.db.beginTransaction()
+        req = {
+          ...req,
+          payload,
+          transactionID: ownTransactionID,
+        } as PayloadRequest
+      } catch (e) {
+        logError('Failed to start transaction', e)
+        return { success: false, error: 'System busy, please try again' }
+      }
+    }
+
     try {
-      // Reserve capacity first
-      const reserveResult = await this.capacityService.reserveSpots(sessionIds, numberOfPeople)
+      // Step 1: Reserve capacity first (inside transaction)
+      // We switch back to "Reserve First" because we are now in a transaction.
+      // If reservation fails, we rollback and nothing is saved.
+      // If reservation succeeds, we create booking.
+
+      const reserveResult = await this.capacityService.reserveSpots(
+        sessionIds,
+        numberOfPeople,
+        req
+      )
+
       if (!reserveResult.success) {
+        if (ownTransactionID) await payload.db.rollbackTransaction(ownTransactionID)
         return { success: false, error: reserveResult.error }
       }
 
-      // Create the booking
+      // Step 2: Create the booking
       const defaultExpiry = new Date(Date.now() + 10 * 60 * 1000).toISOString() // 10 minutes
 
-      let booking: Booking
-      try {
-        booking = await this.payload.create({
-          collection: 'bookings',
-          data: {
-            bookingType,
-            sessions: sessionIds,
-            firstName,
-            lastName,
-            email,
-            phone,
-            numberOfPeople,
-            status: 'pending',
-            paymentStatus: 'unpaid',
-            bookingDate: new Date().toISOString(),
-            expiresAt: expiresAt || defaultExpiry,
-            giftCertificateCode,
-            giftCertificateAmountCents,
-            originalPriceCents,
-          },
-        }) as Booking
-      } catch (error) {
-        // Rollback capacity if booking creation fails
-        await this.capacityService.releaseSpots(sessionIds, numberOfPeople)
-        throw error
+      const booking = await payload.create({
+        collection: 'bookings',
+        data: {
+          bookingType,
+          sessions: sessionIds,
+          firstName,
+          lastName,
+          email,
+          phone,
+          numberOfPeople,
+          status: 'pending',
+          paymentStatus: 'unpaid',
+          bookingDate: new Date().toISOString(),
+          expiresAt: expiresAt || defaultExpiry,
+          giftCertificateCode,
+          giftCertificateAmountCents,
+          originalPriceCents,
+        },
+        req,
+      }) as Booking
+
+      if (ownTransactionID) {
+        await payload.db.commitTransaction(ownTransactionID)
       }
 
       logInfo('Created pending booking', {
@@ -115,6 +151,9 @@ export class BookingService {
 
       return { success: true, booking }
     } catch (error) {
+      if (ownTransactionID) {
+        await payload.db.rollbackTransaction(ownTransactionID)
+      }
       logError('Failed to create booking', error, params)
       return { success: false, error: 'Failed to create booking' }
     }
@@ -127,13 +166,17 @@ export class BookingService {
   async confirmBooking(
     bookingId: number,
     paymentIntentId?: string,
-    additionalData?: Record<string, unknown>
+    additionalData?: Record<string, unknown>,
+    req?: PayloadRequest
   ): Promise<ConfirmBookingResult> {
+    const payload = req?.payload || this.payload
+    
     try {
       // Check if already confirmed (idempotency)
-      const existingBooking = await this.payload.findByID({
+      const existingBooking = await payload.findByID({
         collection: 'bookings',
         id: bookingId,
+        req,
       })
 
       if (!existingBooking) {
@@ -156,10 +199,11 @@ export class BookingService {
         updateData.stripePaymentIntentId = paymentIntentId
       }
 
-      const booking = await this.payload.update({
+      const booking = await payload.update({
         collection: 'bookings',
         id: bookingId,
         data: updateData,
+        req,
       }) as Booking
 
       logInfo('Booking confirmed', { bookingId, paymentIntentId })
@@ -175,12 +219,15 @@ export class BookingService {
    * Cancel a booking and release capacity.
    * Works for both pending and confirmed bookings.
    */
-  async cancelBooking(bookingId: number): Promise<CancelBookingResult> {
+  async cancelBooking(bookingId: number, req?: PayloadRequest): Promise<CancelBookingResult> {
+    const payload = req?.payload || this.payload
+    
     try {
-      const booking = await this.payload.findByID({
+      const booking = await payload.findByID({
         collection: 'bookings',
         id: bookingId,
         depth: 0,
+        req,
       })
 
       if (!booking) {
@@ -197,17 +244,18 @@ export class BookingService {
       const numberOfPeople = booking.numberOfPeople || 0
 
       // Update booking status to cancelled
-      await this.payload.update({
+      await payload.update({
         collection: 'bookings',
         id: bookingId,
         data: {
           status: 'cancelled',
         },
+        req,
       })
 
       // Release capacity
       if (sessionIds.length > 0 && numberOfPeople > 0) {
-        await this.capacityService.releaseSpots(sessionIds, numberOfPeople)
+        await this.capacityService.releaseSpots(sessionIds, numberOfPeople, req)
       }
 
       logInfo('Booking cancelled', { bookingId, sessionCount: sessionIds.length, numberOfPeople })
@@ -223,21 +271,23 @@ export class BookingService {
    * Handle expired pending bookings.
    * Called by cron job to cleanup unpaid bookings and release capacity.
    */
-  async handleExpiredBookings(): Promise<{ processed: number; errors: number }> {
+  async handleExpiredBookings(req?: PayloadRequest): Promise<{ processed: number; errors: number }> {
     let processed = 0
     let errors = 0
+    const payload = req?.payload || this.payload
 
     try {
       const now = new Date().toISOString()
 
       // Find all pending bookings that have expired
-      const expiredBookings = await this.payload.find({
+      const expiredBookings = await payload.find({
         collection: 'bookings',
         where: {
           status: { equals: 'pending' },
           expiresAt: { less_than: now },
         },
         limit: 100,
+        req,
       })
 
       for (const booking of expiredBookings.docs) {
@@ -246,14 +296,15 @@ export class BookingService {
           const numberOfPeople = booking.numberOfPeople || 0
 
           // Delete the booking
-          await this.payload.delete({
+          await payload.delete({
             collection: 'bookings',
             id: booking.id,
+            req,
           })
 
           // Release capacity
           if (sessionIds.length > 0 && numberOfPeople > 0) {
-            await this.capacityService.releaseSpots(sessionIds, numberOfPeople)
+            await this.capacityService.releaseSpots(sessionIds, numberOfPeople, req)
           }
 
           processed++
@@ -281,7 +332,8 @@ export class BookingService {
    */
   async handleStatusChange(
     doc: Booking,
-    previousDoc: Booking | null | undefined
+    previousDoc: Booking | null | undefined,
+    req?: PayloadRequest
   ): Promise<StatusChangeResult> {
     const result: StatusChangeResult = {
       capacityChanged: false,
@@ -315,9 +367,9 @@ export class BookingService {
 
     if (capacityDelta !== 0) {
       if (capacityDelta > 0) {
-        await this.capacityService.releaseSpots(sessionIds, capacityDelta)
+        await this.capacityService.releaseSpots(sessionIds, capacityDelta, req)
       } else {
-        const reserveResult = await this.capacityService.reserveSpots(sessionIds, Math.abs(capacityDelta))
+        const reserveResult = await this.capacityService.reserveSpots(sessionIds, Math.abs(capacityDelta), req)
         if (!reserveResult.success) {
           logError('Failed to reserve additional spots', new Error(reserveResult.error || 'Unknown'), {
             bookingId: doc.id,

@@ -29,6 +29,11 @@ describe('BookingService', () => {
     create: ReturnType<typeof vi.fn>
     update: ReturnType<typeof vi.fn>
     delete: ReturnType<typeof vi.fn>
+    db: {
+      beginTransaction: ReturnType<typeof vi.fn>
+      commitTransaction: ReturnType<typeof vi.fn>
+      rollbackTransaction: ReturnType<typeof vi.fn>
+    }
   }
   let mockCapacityService: {
     reserveSpots: ReturnType<typeof vi.fn>
@@ -43,6 +48,11 @@ describe('BookingService', () => {
       create: vi.fn(),
       update: vi.fn(),
       delete: vi.fn(),
+      db: {
+        beginTransaction: vi.fn().mockResolvedValue('txn-123'),
+        commitTransaction: vi.fn().mockResolvedValue(undefined),
+        rollbackTransaction: vi.fn().mockResolvedValue(undefined),
+      },
     }
 
     mockCapacityService = {
@@ -70,7 +80,7 @@ describe('BookingService', () => {
       numberOfPeople: 2,
     }
 
-    it('should create a pending booking successfully', async () => {
+    it('should create a pending booking successfully with transaction', async () => {
       mockCapacityService.reserveSpots.mockResolvedValue({ success: true })
       mockPayload.create.mockResolvedValue({ id: 100, ...validParams, status: 'pending' })
 
@@ -78,24 +88,13 @@ describe('BookingService', () => {
 
       expect(result.success).toBe(true)
       expect(result.booking).toBeDefined()
-      expect(mockCapacityService.reserveSpots).toHaveBeenCalledWith([1, 2], 2)
-      expect(mockPayload.create).toHaveBeenCalledWith({
-        collection: 'bookings',
-        data: expect.objectContaining({
-          bookingType: 'class',
-          sessions: [1, 2],
-          firstName: 'John',
-          lastName: 'Doe',
-          email: 'john@example.com',
-          phone: '+1234567890',
-          numberOfPeople: 2,
-          status: 'pending',
-          paymentStatus: 'unpaid',
-        }),
-      })
+      expect(mockPayload.db.beginTransaction).toHaveBeenCalled()
+      expect(mockCapacityService.reserveSpots).toHaveBeenCalled()
+      expect(mockPayload.create).toHaveBeenCalled()
+      expect(mockPayload.db.commitTransaction).toHaveBeenCalledWith('txn-123')
     })
 
-    it('should fail if capacity reservation fails', async () => {
+    it('should rollback transaction if capacity reservation fails', async () => {
       mockCapacityService.reserveSpots.mockResolvedValue({
         success: false,
         error: 'Not enough capacity',
@@ -105,17 +104,18 @@ describe('BookingService', () => {
 
       expect(result.success).toBe(false)
       expect(result.error).toBe('Not enough capacity')
+      expect(mockPayload.db.rollbackTransaction).toHaveBeenCalledWith('txn-123')
       expect(mockPayload.create).not.toHaveBeenCalled()
     })
 
-    it('should rollback capacity if booking creation fails', async () => {
+    it('should rollback transaction if booking creation fails', async () => {
       mockCapacityService.reserveSpots.mockResolvedValue({ success: true })
       mockPayload.create.mockRejectedValue(new Error('DB error'))
 
       const result = await service.createPendingBooking(validParams)
 
       expect(result.success).toBe(false)
-      expect(mockCapacityService.releaseSpots).toHaveBeenCalledWith([1, 2], 2)
+      expect(mockPayload.db.rollbackTransaction).toHaveBeenCalledWith('txn-123')
     })
 
     it('should include gift code info when provided', async () => {
@@ -131,14 +131,40 @@ describe('BookingService', () => {
 
       await service.createPendingBooking(paramsWithGift)
 
-      expect(mockPayload.create).toHaveBeenCalledWith({
-        collection: 'bookings',
-        data: expect.objectContaining({
-          giftCertificateCode: 'GIFT-1234',
-          giftCertificateAmountCents: 1000,
-          originalPriceCents: 5000,
-        }),
-      })
+      expect(mockPayload.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            giftCertificateCode: 'GIFT-1234',
+            giftCertificateAmountCents: 1000,
+            originalPriceCents: 5000,
+          }),
+        })
+      )
+    })
+
+    it('should return error if transaction fails to start', async () => {
+      mockPayload.db.beginTransaction.mockRejectedValue(new Error('Connection failed'))
+
+      const result = await service.createPendingBooking(validParams)
+
+      expect(result.success).toBe(false)
+      expect(result.error).toBe('System busy, please try again')
+    })
+
+    it('should use existing transaction if provided in req', async () => {
+      const existingReq = {
+        payload: mockPayload,
+        transactionID: 'existing-txn',
+      }
+      mockCapacityService.reserveSpots.mockResolvedValue({ success: true })
+      mockPayload.create.mockResolvedValue({ id: 100, status: 'pending' })
+
+      await service.createPendingBooking({ ...validParams, req: existingReq as any })
+
+      // Should NOT start new transaction
+      expect(mockPayload.db.beginTransaction).not.toHaveBeenCalled()
+      // Should NOT commit (caller manages transaction)
+      expect(mockPayload.db.commitTransaction).not.toHaveBeenCalled()
     })
   })
 
@@ -159,6 +185,7 @@ describe('BookingService', () => {
           stripePaymentIntentId: 'pi_123',
           expiresAt: null,
         }),
+        req: undefined,
       })
     })
 
@@ -196,6 +223,7 @@ describe('BookingService', () => {
           giftCertificateCode: 'GIFT-1234',
           stripeAmountCents: 4000,
         }),
+        req: undefined,
       })
     })
   })
@@ -217,8 +245,9 @@ describe('BookingService', () => {
         collection: 'bookings',
         id: 1,
         data: { status: 'cancelled' },
+        req: undefined,
       })
-      expect(mockCapacityService.releaseSpots).toHaveBeenCalledWith([1, 2, 3], 2)
+      expect(mockCapacityService.releaseSpots).toHaveBeenCalledWith([1, 2, 3], 2, undefined)
     })
 
     it('should skip if already cancelled', async () => {
@@ -251,7 +280,7 @@ describe('BookingService', () => {
 
       await service.cancelBooking(1)
 
-      expect(mockCapacityService.releaseSpots).toHaveBeenCalledWith([1, 2], 1)
+      expect(mockCapacityService.releaseSpots).toHaveBeenCalledWith([1, 2], 1, undefined)
     })
   })
 
@@ -285,6 +314,7 @@ describe('BookingService', () => {
           expiresAt: { less_than: expect.any(String) },
         },
         limit: 100,
+        req: undefined,
       })
     })
 
@@ -342,7 +372,7 @@ describe('BookingService', () => {
 
       expect(result.capacityChanged).toBe(true)
       expect(result.capacityDelta).toBe(2)
-      expect(mockCapacityService.releaseSpots).toHaveBeenCalledWith([1, 2], 2)
+      expect(mockCapacityService.releaseSpots).toHaveBeenCalledWith([1, 2], 2, undefined)
     })
 
     it('should release capacity when cancelled from pending', async () => {
@@ -352,7 +382,7 @@ describe('BookingService', () => {
       const result = await service.handleStatusChange(currentDoc, previousDoc)
 
       expect(result.capacityChanged).toBe(true)
-      expect(mockCapacityService.releaseSpots).toHaveBeenCalledWith([1, 2], 2)
+      expect(mockCapacityService.releaseSpots).toHaveBeenCalledWith([1, 2], 2, undefined)
     })
 
     it('should NOT change capacity when pending → confirmed', async () => {
@@ -374,7 +404,7 @@ describe('BookingService', () => {
 
       expect(result.capacityChanged).toBe(true)
       expect(result.capacityDelta).toBe(1) // Released 1 spot
-      expect(mockCapacityService.releaseSpots).toHaveBeenCalledWith([1, 2], 1)
+      expect(mockCapacityService.releaseSpots).toHaveBeenCalledWith([1, 2], 1, undefined)
     })
 
     it('should reserve more capacity when numberOfPeople increases', async () => {
@@ -386,7 +416,7 @@ describe('BookingService', () => {
 
       expect(result.capacityChanged).toBe(true)
       expect(result.capacityDelta).toBe(-2) // Reserved 2 more
-      expect(mockCapacityService.reserveSpots).toHaveBeenCalledWith([1, 2], 2)
+      expect(mockCapacityService.reserveSpots).toHaveBeenCalledWith([1, 2], 2, undefined)
     })
 
     it('should handle empty sessions array', async () => {

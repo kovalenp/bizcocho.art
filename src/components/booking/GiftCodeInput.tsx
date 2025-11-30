@@ -89,9 +89,10 @@ export function GiftCodeInput({
   const formatPrice = (cents: number) => `€${(cents / 100).toFixed(2)}`
 
   // If a code is applied, show the discount info
+  // Calculate remaining dynamically from current totalCents (not stale cached value)
   if (appliedCode && validation?.valid) {
     const discountCents = validation.discountCents || 0
-    const remainingCents = validation.remainingToPayCents || 0
+    const remainingCents = Math.max(0, totalCents - discountCents)
     const isFullyCovered = remainingCents === 0
 
     return (

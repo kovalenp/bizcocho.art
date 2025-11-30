@@ -15,10 +15,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const messages = getMessages(locale)
 
   const title = messages.nav.giftCertificates
-  const description =
-    locale === 'es'
-      ? 'Regala creatividad con certificados de regalo para clases de arte. El regalo perfecto para artistas y entusiastas del arte.'
-      : 'Give the gift of creativity with art class gift certificates. The perfect gift for artists and art enthusiasts.'
+  const description = messages.giftCertificates.pageSubtitle
 
   return {
     title: `${title} | bizcocho.art`,
@@ -67,7 +64,7 @@ export default async function GiftCertificatesPage({ params }: Props) {
         </div>
         <div className="relative flex justify-center">
           <span className="px-4 bg-gray-50 text-sm text-gray-500">
-            {locale === 'es' ? 'o' : 'or'}
+            {messages.common.or}
           </span>
         </div>
       </div>

@@ -4,6 +4,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import Stripe from 'stripe'
 import { generateCode } from '@/lib/gift-codes'
 import { logError, logInfo } from '@/lib/logger'
+import { getMessages } from '@/i18n/messages'
+import type { Locale } from '@/i18n/config'
+import { encodeGiftCertificateMetadata } from '@/lib/stripe-metadata'
 
 // Preset amounts in cents
 const PRESET_AMOUNTS = [2500, 5000, 10000] // 25€, 50€, 100€
@@ -113,6 +116,22 @@ export async function POST(request: NextRequest) {
     // Format amount for display
     const formattedAmount = (amountCents / 100).toFixed(2)
 
+    // Get localized messages
+    const messages = getMessages(locale as Locale)
+
+    // Build typed metadata
+    const metadata = encodeGiftCertificateMetadata({
+      giftCertificateId: giftCertificate.id,
+      code,
+      amountCents,
+      purchaserEmail,
+      purchaserFirstName,
+      purchaserLastName,
+      recipientEmail,
+      recipientName: recipientName || undefined,
+      locale: locale as 'en' | 'es',
+    })
+
     // Create Stripe Checkout Session
     const stripeSession = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
@@ -121,10 +140,8 @@ export async function POST(request: NextRequest) {
           price_data: {
             currency: 'eur',
             product_data: {
-              name: locale === 'es' ? 'Certificado de Regalo' : 'Gift Certificate',
-              description: locale === 'es'
-                ? `Certificado de regalo de ${formattedAmount}€ para ${recipientName || recipientEmail}`
-                : `${formattedAmount}€ gift certificate for ${recipientName || recipientEmail}`,
+              name: messages.giftCertificates.productName,
+              description: `${formattedAmount}€ ${messages.giftCertificates.productName.toLowerCase()} - ${recipientName || recipientEmail}`,
             },
             unit_amount: amountCents,
           },
@@ -135,18 +152,7 @@ export async function POST(request: NextRequest) {
       success_url: `${process.env.SITE_URL}/${locale}/gift-certificates/success?session_id={CHECKOUT_SESSION_ID}&code=${code}`,
       cancel_url: `${process.env.SITE_URL}/${locale}/gift-certificates?cancelled=true`,
       customer_email: purchaserEmail,
-      metadata: {
-        purchaseType: 'gift_certificate',
-        giftCertificateId: giftCertificate.id.toString(),
-        code,
-        amountCents: amountCents.toString(),
-        purchaserEmail,
-        purchaserFirstName,
-        purchaserLastName,
-        recipientEmail,
-        recipientName: recipientName || '',
-        locale,
-      },
+      metadata,
     })
 
     // Update gift certificate with Stripe session ID

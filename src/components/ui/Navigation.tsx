@@ -17,7 +17,6 @@ export function Navigation({ currentLocale, messages }: NavigationProps) {
 
   const navItems = [
     { href: `/${currentLocale}`, label: messages.nav.events },
-    { href: `/${currentLocale}/courses`, label: messages.nav.courses },
     { href: `/${currentLocale}/gift-certificates`, label: messages.nav.giftCertificates },
     { href: `/${currentLocale}/about`, label: messages.nav.about },
   ]

@@ -1,5 +1,8 @@
 import type { CollectionConfig } from 'payload'
-import { generateCode } from '../lib/gift-codes'
+import {
+  beforeChangeGiftCertificate,
+  afterChangeGiftCertificate,
+} from './hooks/gift-certificates'
 
 export const GiftCertificates: CollectionConfig = {
   slug: 'gift-certificates',
@@ -223,25 +226,7 @@ export const GiftCertificates: CollectionConfig = {
     },
   ],
   hooks: {
-    beforeChange: [
-      async ({ data, operation }) => {
-        // Auto-generate code if empty on creation
-        if (operation === 'create' && !data?.code) {
-          data.code = generateCode()
-        }
-
-        // For gift certificates: initialize currentBalanceCents from initialValueCents
-        if (operation === 'create' && data?.type === 'gift' && data?.initialValueCents) {
-          data.currentBalanceCents = data.initialValueCents
-        }
-
-        // For promo codes: set status to active on creation
-        if (operation === 'create' && data?.type === 'promo') {
-          data.status = 'active'
-        }
-
-        return data
-      },
-    ],
+    beforeChange: [beforeChangeGiftCertificate],
+    afterChange: [afterChangeGiftCertificate],
   },
 }

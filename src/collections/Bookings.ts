@@ -1,6 +1,5 @@
 import type { CollectionConfig } from 'payload'
-import type { Booking } from '../payload-types'
-import { createBookingService } from '../services/booking'
+import { beforeValidateBooking, afterChangeBooking } from './hooks/bookings'
 
 export const Bookings: CollectionConfig = {
   slug: 'bookings',
@@ -219,51 +218,7 @@ export const Bookings: CollectionConfig = {
     },
   ],
   hooks: {
-    beforeValidate: [
-      async ({ data, operation, req }) => {
-        if (operation === 'create' || operation === 'update') {
-          // Validation: Must have at least one session
-          const sessions = data?.sessions
-          if (!sessions || (Array.isArray(sessions) && sessions.length === 0)) {
-            throw new Error('Booking must include at least one session')
-          }
-
-          // Auto-set bookingType based on first session's parent class type
-          if (Array.isArray(sessions) && sessions.length > 0 && req?.payload) {
-            const firstSessionId = typeof sessions[0] === 'object' ? sessions[0].id : sessions[0]
-
-            try {
-              const session = await req.payload.findByID({
-                collection: 'sessions',
-                id: firstSessionId,
-                depth: 0,
-              })
-
-              if (session?.sessionType) {
-                data.bookingType = session.sessionType // 'class' or 'course'
-              }
-            } catch {
-              // Session lookup failed, keep existing bookingType
-            }
-          }
-        }
-
-        return data
-      },
-    ],
-    afterChange: [
-      async ({ doc, req, operation, previousDoc }) => {
-        // Only handle updates (capacity changes on status/numberOfPeople changes)
-        if (operation !== 'update') {
-          return doc
-        }
-
-        // Delegate to BookingService for capacity management
-        const bookingService = createBookingService(req.payload)
-        await bookingService.handleStatusChange(doc as Booking, previousDoc as Booking | null)
-
-        return doc
-      },
-    ],
+    beforeValidate: [beforeValidateBooking],
+    afterChange: [afterChangeBooking],
   },
 }

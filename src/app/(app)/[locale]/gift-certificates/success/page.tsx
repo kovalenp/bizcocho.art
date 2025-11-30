@@ -76,7 +76,7 @@ export default async function GiftCertificateSuccessPage({ params, searchParams 
           {/* Information Box */}
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 mb-8 text-left">
             <h2 className="font-semibold text-blue-900 mb-2">
-              {locale === 'es' ? '¿Qué pasa ahora?' : "What's next?"}
+              {t.whatsNext}
             </h2>
             <ul className="text-blue-800 space-y-2 text-sm">
               <li className="flex items-start">
@@ -92,9 +92,7 @@ export default async function GiftCertificateSuccessPage({ params, searchParams 
                   />
                 </svg>
                 <span>
-                  {locale === 'es'
-                    ? 'El destinatario recibirá un email con el certificado de regalo'
-                    : 'The recipient will receive an email with the gift certificate'}
+                  {t.recipientWillReceive}
                 </span>
               </li>
               <li className="flex items-start">
@@ -110,9 +108,7 @@ export default async function GiftCertificateSuccessPage({ params, searchParams 
                   />
                 </svg>
                 <span>
-                  {locale === 'es'
-                    ? 'Tú también recibirás una confirmación de compra'
-                    : "You'll also receive a purchase confirmation"}
+                  {t.youWillReceiveConfirmation}
                 </span>
               </li>
               <li className="flex items-start">
@@ -128,9 +124,7 @@ export default async function GiftCertificateSuccessPage({ params, searchParams 
                   />
                 </svg>
                 <span>
-                  {locale === 'es'
-                    ? 'El código puede usarse al reservar cualquier clase'
-                    : 'The code can be used when booking any class'}
+                  {t.codeCanBeUsed}
                 </span>
               </li>
               <li className="flex items-start">
@@ -146,9 +140,7 @@ export default async function GiftCertificateSuccessPage({ params, searchParams 
                   />
                 </svg>
                 <span>
-                  {locale === 'es'
-                    ? 'El certificado es válido por 12 meses'
-                    : 'The certificate is valid for 12 months'}
+                  {t.validFor12Months}
                 </span>
               </li>
             </ul>
@@ -160,13 +152,13 @@ export default async function GiftCertificateSuccessPage({ params, searchParams 
               href={`/${locale}`}
               className="inline-flex items-center justify-center px-6 py-3 border border-transparent text-base font-medium rounded-md text-white bg-primary hover:bg-primary/90 transition-colors"
             >
-              {locale === 'es' ? 'Volver al Inicio' : 'Back to Home'}
+              {messages.common.backToHome}
             </Link>
             <Link
               href={`/${locale}/gift-certificates`}
               className="inline-flex items-center justify-center px-6 py-3 border border-gray-300 text-base font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 transition-colors"
             >
-              {locale === 'es' ? 'Comprar Otro' : 'Buy Another'}
+              {t.buyAnother}
             </Link>
           </div>
         </div>

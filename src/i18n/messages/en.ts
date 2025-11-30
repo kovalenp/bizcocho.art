@@ -4,6 +4,14 @@ export const messages = {
     openCms: 'Open CMS (Payload)',
     all: 'All',
     backToClasses: 'Back to Classes',
+    or: 'or',
+    free: 'FREE',
+    session: 'Session',
+    sessions: 'sessions',
+    person: 'person',
+    people: 'people',
+    at: 'at',
+    backToHome: 'Back to Home',
   },
 
   // Navigation
@@ -31,14 +39,18 @@ export const messages = {
   classDetail: {
     duration: 'Duration',
     minutes: 'minutes',
+    minutesPerSession: 'minutes per session',
     location: 'Location',
     capacity: 'Capacity',
+    participants: 'participants',
     price: 'Price',
     instructor: 'Instructor',
     about: 'About this class',
     gallery: 'Gallery',
     bookNow: 'Book Now',
     spotsAvailable: 'spots available',
+    description: 'Description',
+    aboutInstructor: 'About the Instructor',
   },
 
   // Booking form
@@ -61,6 +73,18 @@ export const messages = {
     error: 'Failed to create booking. Please try again.',
     requiredField: 'This field is required',
     invalidEmail: 'Please enter a valid email',
+    processing: 'Processing...',
+    continueToPayment: 'Continue to Payment',
+    totalPrice: 'Total Price',
+  },
+
+  // Cancel page
+  cancel: {
+    title: 'Booking Cancelled',
+    message: 'Your booking has been cancelled and no payment was processed. The spots have been released back to availability.',
+    tryAgainTitle: 'Want to try again?',
+    tryAgainMessage: 'If you changed your mind or encountered an issue, you can return to the page and complete your booking.',
+    browseOfferings: 'Browse Offerings',
   },
 
   // Gift code input
@@ -120,5 +144,44 @@ export const messages = {
     statusRedeemed: 'Fully Redeemed',
     statusExpired: 'Expired',
     codeNotFound: 'Gift certificate not found. Please check the code and try again.',
+    whatsNext: "What's next?",
+    recipientWillReceive: 'The recipient will receive an email with the gift certificate',
+    youWillReceiveConfirmation: "You'll also receive a purchase confirmation",
+    codeCanBeUsed: 'The code can be used when booking any class',
+    validFor12Months: 'The certificate is valid for 12 months',
+    buyAnother: 'Buy Another',
+    productName: 'Gift Certificate',
+  },
+
+  // About page
+  about: {
+    metaDescription: 'Discover bizcocho.art, your creative space in Madrid. Art classes for all levels at Calle de las Artes, 123.',
+    ourStory: 'Our Story',
+    ourStoryP1: 'bizcocho.art was born from a passion for making art accessible to everyone. We believe that creativity is a universal gift, and our goal is to provide a welcoming space where people of all skill levels can explore their artistic potential.',
+    ourStoryP2: "Whether you're a complete beginner or an experienced artist, our classes are designed to inspire, educate, and build a community of art enthusiasts.",
+    contactUs: 'Contact Us',
+    location: 'Location',
+    email: 'Email',
+    phone: 'Phone',
+    hours: 'Hours',
+    hoursWeekday: 'Monday - Saturday: 10:00 AM - 8:00 PM',
+    hoursSunday: 'Sunday: Closed',
+  },
+
+  // Course related
+  course: {
+    full: 'Course Full',
+    bookEntireCourse: 'Book Entire Course',
+    bookCourse: 'Book Course',
+    forEntireCourse: 'for entire course',
+    duration: 'Duration:',
+    schedule: 'Schedule:',
+    courseDates: 'Course Dates:',
+    fullEnrollment: 'Full course enrollment',
+  },
+
+  // Payment related
+  payment: {
+    discountApplied: 'Discount applied:',
   },
 } as const

@@ -120,7 +120,7 @@ export function CourseBookingButton({
     return (
       <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg text-center">
         <span className="text-yellow-800 font-medium">
-          {locale === 'es' ? 'Curso completo' : 'Course Full'}
+          {messages.course.full}
         </span>
       </div>
     )
@@ -132,7 +132,7 @@ export function CourseBookingButton({
         className="w-full bg-primary text-white py-3 px-6 rounded-lg font-semibold hover:bg-primary/90 transition-colors"
         onClick={() => setShowForm(true)}
       >
-        {locale === 'es' ? 'Reservar Curso Completo' : 'Book Entire Course'}
+        {messages.course.bookEntireCourse}
       </button>
     )
   }
@@ -141,7 +141,7 @@ export function CourseBookingButton({
     <div className="bg-gray-50 rounded-lg p-6">
       <div className="flex justify-between items-center mb-4">
         <h3 className="font-semibold text-lg">
-          {locale === 'es' ? 'Reservar Curso' : 'Book Course'}
+          {messages.course.bookCourse}
         </h3>
         <button
           onClick={() => setShowForm(false)}
@@ -156,7 +156,7 @@ export function CourseBookingButton({
         <div className="flex items-baseline justify-between">
           <div>
             <div className="text-sm text-gray-600">
-              {locale === 'es' ? 'Precio Total' : 'Total Price'}
+              {messages.booking.totalPrice}
             </div>
             {giftDiscount ? (
               <div>
@@ -165,7 +165,7 @@ export function CourseBookingButton({
                 </div>
                 <div className="text-2xl font-bold text-primary">
                   {discountedPriceCents === 0
-                    ? (locale === 'es' ? 'GRATIS' : 'FREE')
+                    ? messages.common.free
                     : `${currencySymbol}${discountedPrice.toFixed(2)}`}
                 </div>
               </div>
@@ -195,7 +195,7 @@ export function CourseBookingButton({
 
       {status === 'error' && (
         <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-800 text-sm">
-          {errorMessage || (locale === 'es' ? 'Error al procesar la reserva' : 'Booking failed')}
+          {errorMessage || messages.booking.error}
         </div>
       )}
 
@@ -203,7 +203,7 @@ export function CourseBookingButton({
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              {locale === 'es' ? 'Nombre' : 'First Name'}
+              {messages.booking.firstName}
             </label>
             <input
               type="text"
@@ -215,7 +215,7 @@ export function CourseBookingButton({
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              {locale === 'es' ? 'Apellido' : 'Last Name'}
+              {messages.booking.lastName}
             </label>
             <input
               type="text"
@@ -229,7 +229,7 @@ export function CourseBookingButton({
 
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
-            {locale === 'es' ? 'Correo Electrónico' : 'Email'}
+            {messages.booking.email}
           </label>
           <input
             type="email"
@@ -242,7 +242,7 @@ export function CourseBookingButton({
 
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
-            {locale === 'es' ? 'Teléfono' : 'Phone'}
+            {messages.booking.phone}
           </label>
           <input
             type="tel"
@@ -255,7 +255,7 @@ export function CourseBookingButton({
 
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
-            {locale === 'es' ? 'Número de Personas' : 'Number of People'}
+            {messages.booking.numberOfPeople}
           </label>
           <select
             value={formData.numberOfPeople}
@@ -274,8 +274,8 @@ export function CourseBookingButton({
           className="w-full bg-primary text-white py-3 px-6 rounded-lg font-semibold hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {status === 'loading'
-            ? (locale === 'es' ? 'Procesando...' : 'Processing...')
-            : (locale === 'es' ? 'Continuar al Pago' : 'Continue to Payment')
+            ? messages.booking.processing
+            : messages.booking.continueToPayment
           }
         </button>
       </form>
