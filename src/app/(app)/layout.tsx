@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
+  metadataBase: new URL(process.env.SITE_URL || 'https://bizcocho.art'),
   title: 'bizcocho.art',
   description: 'Discover your creativity through art classes',
   icons: {

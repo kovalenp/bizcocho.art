@@ -13,10 +13,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const messages = getMessages(locale)
 
   const title = messages.nav.about
-  const description =
-    locale === 'es'
-      ? 'Conoce bizcocho.art, tu espacio creativo en Madrid. Clases de arte para todos los niveles en Calle de las Artes, 123.'
-      : 'Discover bizcocho.art, your creative space in Madrid. Art classes for all levels at Calle de las Artes, 123.'
+  const description = messages.about.metaDescription
 
   return {
     title: `${title} | bizcocho.art`,
@@ -44,8 +41,6 @@ export default async function AboutPage({ params }: Props) {
   const { locale } = await params
   const messages = getMessages(locale)
 
-  const isSpanish = locale === 'es'
-
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
       <div className="max-w-4xl mx-auto">
@@ -54,18 +49,14 @@ export default async function AboutPage({ params }: Props) {
         {/* Our Story Section */}
         <div className="bg-white rounded-lg shadow-md p-8 mb-8">
           <h2 className="text-2xl font-semibold text-gray-900 mb-4">
-            {isSpanish ? 'Nuestra Historia' : 'Our Story'}
+            {messages.about.ourStory}
           </h2>
           <div className="prose prose-lg text-gray-700">
             <p className="mb-4">
-              {isSpanish
-                ? 'bizcocho.art nació de la pasión por hacer el arte accesible para todos. Creemos que la creatividad es un regalo universal, y nuestro objetivo es proporcionar un espacio acogedor donde personas de todos los niveles puedan explorar su potencial artístico.'
-                : 'bizcocho.art was born from a passion for making art accessible to everyone. We believe that creativity is a universal gift, and our goal is to provide a welcoming space where people of all skill levels can explore their artistic potential.'}
+              {messages.about.ourStoryP1}
             </p>
             <p className="mb-4">
-              {isSpanish
-                ? 'Ya seas un principiante completo o un artista experimentado, nuestras clases están diseñadas para inspirar, educar y crear una comunidad de entusiastas del arte.'
-                : "Whether you're a complete beginner or an experienced artist, our classes are designed to inspire, educate, and build a community of art enthusiasts."}
+              {messages.about.ourStoryP2}
             </p>
           </div>
         </div>
@@ -73,12 +64,12 @@ export default async function AboutPage({ params }: Props) {
         {/* Contact Section */}
         <div className="bg-white rounded-lg shadow-md p-8">
           <h2 className="text-2xl font-semibold text-gray-900 mb-4">
-            {isSpanish ? 'Contáctanos' : 'Contact Us'}
+            {messages.about.contactUs}
           </h2>
           <div className="space-y-4">
             <div>
               <h3 className="text-lg font-medium text-gray-900 mb-2">
-                {isSpanish ? 'Ubicación' : 'Location'}
+                {messages.about.location}
               </h3>
               <p className="text-gray-700">
                 Calle de las Artes, 123
@@ -88,7 +79,7 @@ export default async function AboutPage({ params }: Props) {
             </div>
             <div>
               <h3 className="text-lg font-medium text-gray-900 mb-2">
-                {isSpanish ? 'Correo Electrónico' : 'Email'}
+                {messages.about.email}
               </h3>
               <p className="text-gray-700">
                 <a
@@ -101,7 +92,7 @@ export default async function AboutPage({ params }: Props) {
             </div>
             <div>
               <h3 className="text-lg font-medium text-gray-900 mb-2">
-                {isSpanish ? 'Teléfono' : 'Phone'}
+                {messages.about.phone}
               </h3>
               <p className="text-gray-700">
                 <a href="tel:+34912345678" className="text-primary hover:underline">
@@ -111,12 +102,12 @@ export default async function AboutPage({ params }: Props) {
             </div>
             <div>
               <h3 className="text-lg font-medium text-gray-900 mb-2">
-                {isSpanish ? 'Horario' : 'Hours'}
+                {messages.about.hours}
               </h3>
               <p className="text-gray-700">
-                {isSpanish ? 'Lunes - Sábado: 10:00 - 20:00' : 'Monday - Saturday: 10:00 AM - 8:00 PM'}
+                {messages.about.hoursWeekday}
                 <br />
-                {isSpanish ? 'Domingo: Cerrado' : 'Sunday: Closed'}
+                {messages.about.hoursSunday}
               </p>
             </div>
           </div>

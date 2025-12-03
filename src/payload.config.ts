@@ -12,6 +12,7 @@ import { Classes } from './collections/Classes'
 import { Instructors } from './collections/Instructors'
 import { Sessions } from './collections/Sessions'
 import { Bookings } from './collections/Bookings'
+import { GiftCertificates } from './collections/GiftCertificates'
 import { logger } from './lib/logger'
 
 const filename = fileURLToPath(import.meta.url)
@@ -32,6 +33,7 @@ export default buildConfig({
     Instructors,
     Sessions,
     Bookings,
+    GiftCertificates,
   ],
   editor: lexicalEditor(),
   secret: process.env.PAYLOAD_SECRET || '',

@@ -1,6 +1,8 @@
 import { type Locale } from '@/i18n/config'
 import { getMessages } from '@/i18n/messages'
 import type { Metadata } from 'next'
+import { GiftCertificatePurchaseForm } from '@/components/gift-certificates/GiftCertificatePurchaseForm'
+import { GiftCertificateBalanceChecker } from '@/components/gift-certificates/GiftCertificateBalanceChecker'
 
 type Props = {
   params: Promise<{
@@ -13,10 +15,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const messages = getMessages(locale)
 
   const title = messages.nav.giftCertificates
-  const description =
-    locale === 'es'
-      ? 'Regala creatividad con certificados de regalo para clases de arte. El regalo perfecto para artistas y entusiastas del arte.'
-      : 'Give the gift of creativity with art class gift certificates. The perfect gift for artists and art enthusiasts.'
+  const description = messages.giftCertificates.pageSubtitle
 
   return {
     title: `${title} | bizcocho.art`,
@@ -43,30 +42,35 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 export default async function GiftCertificatesPage({ params }: Props) {
   const { locale } = await params
   const messages = getMessages(locale)
+  const t = messages.giftCertificates
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-      <div className="text-center">
-        <h1 className="text-4xl font-bold text-gray-900 mb-4">
-          {messages.nav.giftCertificates}
-        </h1>
-        <p className="text-lg text-gray-600 mb-8">
-          {locale === 'es'
-            ? 'Regala el don de la creatividad. Los certificados de regalo perfectos para amantes del arte.'
-            : 'Give the gift of creativity. Perfect gift certificates for art lovers.'}
-        </p>
-        <div className="bg-white rounded-lg shadow-md p-12">
-          <div className="text-6xl mb-6">🎁</div>
-          <h2 className="text-2xl font-semibold text-gray-900 mb-4">
-            {locale === 'es' ? 'Próximamente' : 'Coming Soon'}
-          </h2>
-          <p className="text-gray-600 max-w-2xl mx-auto">
-            {locale === 'es'
-              ? 'Pronto podrás comprar certificados de regalo para nuestras clases de arte. El regalo perfecto para inspirar creatividad en tus seres queridos.'
-              : "Soon you'll be able to purchase gift certificates for our art classes. The perfect gift to inspire creativity in your loved ones."}
-          </p>
+    <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+      {/* Header */}
+      <div className="text-center mb-12">
+        <h1 className="text-4xl font-bold text-gray-900 mb-4">{t.pageTitle}</h1>
+        <p className="text-lg text-gray-600 max-w-2xl mx-auto">{t.pageSubtitle}</p>
+      </div>
+
+      {/* Purchase Form */}
+      <div className="mb-16">
+        <GiftCertificatePurchaseForm messages={messages} locale={locale} />
+      </div>
+
+      {/* Divider */}
+      <div className="relative my-12">
+        <div className="absolute inset-0 flex items-center">
+          <div className="w-full border-t border-gray-200"></div>
+        </div>
+        <div className="relative flex justify-center">
+          <span className="px-4 bg-gray-50 text-sm text-gray-500">
+            {messages.common.or}
+          </span>
         </div>
       </div>
+
+      {/* Balance Checker */}
+      <GiftCertificateBalanceChecker messages={messages} locale={locale} />
     </div>
   )
 }

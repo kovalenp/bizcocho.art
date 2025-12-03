@@ -229,7 +229,7 @@ export default async function OfferingDetailPage({ params }: Props) {
                   {pricePerPerson.toFixed(2)}
                 </span>
                 <span className="text-gray-600 ml-2">
-                  {locale === 'es' ? 'por curso completo' : 'for entire course'}
+                  {messages.course.forEntireCourse}
                 </span>
               </div>
 
@@ -237,36 +237,36 @@ export default async function OfferingDetailPage({ params }: Props) {
               <div className="space-y-4 mb-6">
                 <div className="flex items-start">
                   <span className="font-semibold w-32">
-                    {locale === 'es' ? 'Duración:' : 'Duration:'}
+                    {messages.course.duration}
                   </span>
                   <span>
                     {classDoc.durationMinutes}{' '}
-                    {locale === 'es' ? 'minutos por sesión' : 'minutes per session'}
+                    {messages.classDetail.minutesPerSession}
                   </span>
                 </div>
 
                 <div className="flex items-start">
                   <span className="font-semibold w-32">
-                    {locale === 'es' ? 'Sesiones:' : 'Sessions:'}
+                    {messages.common.session}:
                   </span>
                   <span>
-                    {sessions.totalDocs} {locale === 'es' ? 'sesiones' : 'sessions'}
+                    {sessions.totalDocs} {messages.common.sessions}
                   </span>
                 </div>
 
                 <div className="flex items-start">
                   <span className="font-semibold w-32">
-                    {locale === 'es' ? 'Horario:' : 'Schedule:'}
+                    {messages.course.schedule}
                   </span>
                   <span>
-                    {scheduleText} {locale === 'es' ? 'a las' : 'at'} {classDoc.schedule?.startTime}
+                    {scheduleText} {messages.common.at} {classDoc.schedule?.startTime}
                   </span>
                 </div>
 
                 {instructor && (
                   <div className="flex items-start">
                     <span className="font-semibold w-32">
-                      {locale === 'es' ? 'Instructor:' : 'Instructor:'}
+                      {messages.classDetail.instructor}:
                     </span>
                     <span>{instructor.name}</span>
                   </div>
@@ -275,7 +275,7 @@ export default async function OfferingDetailPage({ params }: Props) {
                 {classDoc.location && (
                   <div className="flex items-start">
                     <span className="font-semibold w-32">
-                      {locale === 'es' ? 'Ubicación:' : 'Location:'}
+                      {messages.classDetail.location}:
                     </span>
                     <span>{classDoc.location}</span>
                   </div>
@@ -283,10 +283,10 @@ export default async function OfferingDetailPage({ params }: Props) {
 
                 <div className="flex items-start">
                   <span className="font-semibold w-32">
-                    {locale === 'es' ? 'Capacidad:' : 'Capacity:'}
+                    {messages.classDetail.capacity}:
                   </span>
                   <span>
-                    {classDoc.maxCapacity} {locale === 'es' ? 'participantes' : 'participants'}
+                    {classDoc.maxCapacity} {messages.classDetail.participants}
                   </span>
                 </div>
               </div>
@@ -295,7 +295,7 @@ export default async function OfferingDetailPage({ params }: Props) {
               {sessions.docs.length > 0 && (
                 <div className="mb-6 p-4 bg-gray-50 rounded-lg">
                   <h3 className="font-semibold mb-3">
-                    {locale === 'es' ? 'Fechas del Curso:' : 'Course Dates:'}
+                    {messages.course.courseDates}
                   </h3>
                   <div className="space-y-2">
                     {sessions.docs.map((session: any, index) => {
@@ -310,7 +310,7 @@ export default async function OfferingDetailPage({ params }: Props) {
                       )
                       return (
                         <div key={session.id} className="text-sm">
-                          {locale === 'es' ? 'Sesión' : 'Session'} {index + 1}: {dateStr}
+                          {messages.common.session} {index + 1}: {dateStr}
                         </div>
                       )
                     })}
@@ -328,6 +328,7 @@ export default async function OfferingDetailPage({ params }: Props) {
                   ...sessions.docs.map((s) => s.availableSpots ?? classDoc.maxCapacity ?? 10)
                 )}
                 locale={locale}
+                messages={messages}
               />
             </div>
           </div>
@@ -336,7 +337,7 @@ export default async function OfferingDetailPage({ params }: Props) {
           {classDoc.description && (
             <div className="mt-12">
               <h2 className="text-2xl font-bold mb-4">
-                {locale === 'es' ? 'Descripción' : 'Description'}
+                {messages.classDetail.description}
               </h2>
               <p className="text-gray-700 leading-relaxed whitespace-pre-wrap">
                 {classDoc.description}
@@ -348,7 +349,7 @@ export default async function OfferingDetailPage({ params }: Props) {
           {instructor && instructor.bio && (
             <div className="mt-12">
               <h2 className="text-2xl font-bold mb-4">
-                {locale === 'es' ? 'Sobre el Instructor' : 'About the Instructor'}
+                {messages.classDetail.aboutInstructor}
               </h2>
               <div className="flex items-start gap-4">
                 {instructor.photo && typeof instructor.photo === 'object' && (

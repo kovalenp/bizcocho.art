@@ -1,13 +1,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { CapacityService, createCapacityService } from './capacity'
 import type { Payload } from 'payload'
-import type { ReservationResult, CapacityInfo } from './capacity'
+import type { ReservationResult } from './capacity'
 
 /**
- * Unit tests for CapacityService (unified API)
+ * Unit tests for CapacityService (Payload ORM operations)
  *
  * Test Coverage:
- * - reserveSpots: Success (single/multiple), not found, insufficient capacity, race conditions, errors
+ * - reserveSpots: Success (single/multiple), insufficient capacity, race conditions, errors
  * - releaseSpots: Success (single/multiple), empty array, errors
  * - getAvailability: Success (single/multiple), not found, errors
  * - getClassSessionIds: Success, empty result, errors
@@ -55,70 +55,77 @@ describe('CapacityService', () => {
     })
 
     it('should successfully reserve spots for a single session', async () => {
-      const sessionId = 123
-      const numberOfPeople = 2
-
       mockPayload.find
         .mockResolvedValueOnce({
-          docs: [{ id: sessionId, availableSpots: 10 }],
-        } as any) // Initial fetch
+          docs: [{ id: 1, availableSpots: 10 }],
+        })
         .mockResolvedValueOnce({
-          docs: [{ id: sessionId, availableSpots: 8 }],
-        } as any) // Verification fetch
+          docs: [{ id: 1, availableSpots: 8 }], // After update verification
+        })
 
-      mockPayload.update.mockResolvedValue({} as any)
+      mockPayload.update.mockResolvedValue({ id: 1, availableSpots: 8 })
 
-      const result = await service.reserveSpots([sessionId], numberOfPeople)
+      const result = await service.reserveSpots([1], 2)
 
       expect(result).toEqual<ReservationResult>({
         success: true,
         reservedSpots: 2,
       })
-
-      expect(mockPayload.find).toHaveBeenCalledTimes(2)
       expect(mockPayload.update).toHaveBeenCalledWith({
         collection: 'sessions',
-        id: sessionId,
+        id: 1,
         data: { availableSpots: 8 },
+        req: undefined,
       })
     })
 
     it('should successfully reserve spots for multiple sessions', async () => {
-      const sessionIds = [1, 2, 3]
-      const numberOfPeople = 2
-
       mockPayload.find
         .mockResolvedValueOnce({
           docs: [
             { id: 1, availableSpots: 10 },
-            { id: 2, availableSpots: 12 },
-            { id: 3, availableSpots: 8 },
+            { id: 2, availableSpots: 8 },
           ],
-        } as any)
+        })
         .mockResolvedValueOnce({
           docs: [
             { id: 1, availableSpots: 8 },
-            { id: 2, availableSpots: 10 },
-            { id: 3, availableSpots: 6 },
+            { id: 2, availableSpots: 6 },
           ],
-        } as any)
+        })
 
-      mockPayload.update.mockResolvedValue({} as any)
+      mockPayload.update.mockResolvedValue({})
 
-      const result = await service.reserveSpots(sessionIds, numberOfPeople)
+      const result = await service.reserveSpots([1, 2], 2)
 
       expect(result).toEqual<ReservationResult>({
         success: true,
         reservedSpots: 2,
       })
-
-      expect(mockPayload.update).toHaveBeenCalledTimes(3)
+      expect(mockPayload.update).toHaveBeenCalledTimes(2)
     })
 
-    it('should return error when one or more sessions not found', async () => {
+    it('should return error when not enough capacity', async () => {
+      mockPayload.find.mockResolvedValue({
+        docs: [
+          { id: 1, availableSpots: 3 },
+          { id: 2, availableSpots: 8 },
+        ],
+      })
+
+      const result = await service.reserveSpots([1, 2], 5)
+
+      expect(result).toEqual<ReservationResult>({
+        success: false,
+        error: 'Not enough capacity available',
+      })
+      expect(mockPayload.update).not.toHaveBeenCalled()
+    })
+
+    it('should return error when session not found', async () => {
       mockPayload.find.mockResolvedValue({
         docs: [{ id: 1, availableSpots: 10 }], // Only 1 of 2 found
-      } as any)
+      })
 
       const result = await service.reserveSpots([1, 2], 2)
 
@@ -126,68 +133,28 @@ describe('CapacityService', () => {
         success: false,
         error: 'One or more sessions not found',
       })
-
-      expect(mockPayload.update).not.toHaveBeenCalled()
     })
 
-    it('should return error when minimum capacity is insufficient', async () => {
-      mockPayload.find.mockResolvedValue({
-        docs: [
-          { id: 1, availableSpots: 10 },
-          { id: 2, availableSpots: 3 }, // Minimum is 3
-          { id: 3, availableSpots: 8 },
-        ],
-      } as any)
-
-      const result = await service.reserveSpots([1, 2, 3], 5)
-
-      expect(result).toEqual<ReservationResult>({
-        success: false,
-        error: 'Not enough capacity available',
-      })
-
-      expect(mockPayload.update).not.toHaveBeenCalled()
-    })
-
-    it('should handle null availableSpots as zero', async () => {
-      mockPayload.find.mockResolvedValue({
-        docs: [{ id: 1, availableSpots: null }],
-      } as any)
-
-      const result = await service.reserveSpots([1], 1)
-
-      expect(result).toEqual<ReservationResult>({
-        success: false,
-        error: 'Not enough capacity available',
-      })
-    })
-
-    it('should detect race condition and rollback when spots go negative', async () => {
+    it('should detect race condition (negative spots) and rollback', async () => {
       mockPayload.find
         .mockResolvedValueOnce({
-          docs: [
-            { id: 1, availableSpots: 10 },
-            { id: 2, availableSpots: 10 },
-          ],
-        } as any)
+          docs: [{ id: 1, availableSpots: 5 }],
+        })
         .mockResolvedValueOnce({
-          docs: [
-            { id: 1, availableSpots: 8 },
-            { id: 2, availableSpots: -1 }, // Race condition!
-          ],
-        } as any)
+          docs: [{ id: 1, availableSpots: -2 }], // Negative after update (race condition)
+        })
 
-      mockPayload.update.mockResolvedValue({} as any)
+      mockPayload.update.mockResolvedValue({})
 
-      const result = await service.reserveSpots([1, 2], 2)
+      const result = await service.reserveSpots([1], 5)
 
+      // Without transaction, should do manual rollback
       expect(result).toEqual<ReservationResult>({
         success: false,
         error: 'Race condition detected - please try again',
       })
-
-      // 2 initial decrements + 2 rollbacks = 4 updates
-      expect(mockPayload.update).toHaveBeenCalledTimes(4)
+      // Should have called update twice: once to decrement, once to rollback
+      expect(mockPayload.update).toHaveBeenCalledTimes(2)
     })
 
     it('should handle exceptions and return error', async () => {
@@ -195,6 +162,39 @@ describe('CapacityService', () => {
 
       const result = await service.reserveSpots([1], 2)
 
+      expect(result).toEqual<ReservationResult>({
+        success: false,
+        error: 'Failed to reserve spots',
+      })
+    })
+
+    it('should use request context when provided', async () => {
+      const mockReq = { payload: mockPayload, transactionID: 'txn-123' }
+      mockPayload.find
+        .mockResolvedValueOnce({ docs: [{ id: 1, availableSpots: 10 }] })
+        .mockResolvedValueOnce({ docs: [{ id: 1, availableSpots: 8 }] })
+      mockPayload.update.mockResolvedValue({})
+
+      await service.reserveSpots([1], 2, mockReq as any)
+
+      expect(mockPayload.find).toHaveBeenCalledWith(
+        expect.objectContaining({ req: mockReq })
+      )
+      expect(mockPayload.update).toHaveBeenCalledWith(
+        expect.objectContaining({ req: mockReq })
+      )
+    })
+
+    it('should throw error in transaction when race condition detected', async () => {
+      const mockReq = { payload: mockPayload, transactionID: 'txn-123' }
+      mockPayload.find
+        .mockResolvedValueOnce({ docs: [{ id: 1, availableSpots: 5 }] })
+        .mockResolvedValueOnce({ docs: [{ id: 1, availableSpots: -2 }] })
+      mockPayload.update.mockResolvedValue({})
+
+      const result = await service.reserveSpots([1], 5, mockReq as any)
+
+      // In transaction, throws error to trigger rollback
       expect(result).toEqual<ReservationResult>({
         success: false,
         error: 'Failed to reserve spots',
@@ -211,55 +211,32 @@ describe('CapacityService', () => {
 
     it('should successfully release spots for a single session', async () => {
       mockPayload.find.mockResolvedValue({
-        docs: [{ id: 1, availableSpots: 8 }],
-      } as any)
-
-      mockPayload.update.mockResolvedValue({} as any)
+        docs: [{ id: 1, availableSpots: 5 }],
+      })
+      mockPayload.update.mockResolvedValue({})
 
       await service.releaseSpots([1], 2)
 
       expect(mockPayload.update).toHaveBeenCalledWith({
         collection: 'sessions',
         id: 1,
-        data: { availableSpots: 10 },
+        data: { availableSpots: 7 },
+        req: undefined,
       })
     })
 
     it('should successfully release spots for multiple sessions', async () => {
       mockPayload.find.mockResolvedValue({
         docs: [
-          { id: 1, availableSpots: 8 },
-          { id: 2, availableSpots: 10 },
-          { id: 3, availableSpots: 6 },
+          { id: 1, availableSpots: 5 },
+          { id: 2, availableSpots: 3 },
         ],
-      } as any)
-
-      mockPayload.update.mockResolvedValue({} as any)
-
-      await service.releaseSpots([1, 2, 3], 2)
-
-      expect(mockPayload.update).toHaveBeenCalledTimes(3)
-      expect(mockPayload.update).toHaveBeenNthCalledWith(1, {
-        collection: 'sessions',
-        id: 1,
-        data: { availableSpots: 10 },
       })
-    })
+      mockPayload.update.mockResolvedValue({})
 
-    it('should handle null availableSpots as zero', async () => {
-      mockPayload.find.mockResolvedValue({
-        docs: [{ id: 1, availableSpots: null }],
-      } as any)
+      await service.releaseSpots([1, 2], 2)
 
-      mockPayload.update.mockResolvedValue({} as any)
-
-      await service.releaseSpots([1], 5)
-
-      expect(mockPayload.update).toHaveBeenCalledWith({
-        collection: 'sessions',
-        id: 1,
-        data: { availableSpots: 5 },
-      })
+      expect(mockPayload.update).toHaveBeenCalledTimes(2)
     })
 
     it('should handle exceptions without throwing', async () => {

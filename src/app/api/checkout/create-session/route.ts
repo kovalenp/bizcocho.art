@@ -3,6 +3,8 @@ import config from '@payload-config'
 import { NextRequest, NextResponse } from 'next/server'
 import Stripe from 'stripe'
 import { logError } from '@/lib/logger'
+import { createGiftCertificateService } from '@/services/gift-certificates'
+import { createCapacityService } from '@/services/capacity'
 
 type CheckoutRequestBody = {
   classId: string // Required: the class/course ID
@@ -13,6 +15,7 @@ type CheckoutRequestBody = {
   phone: string
   numberOfPeople: number
   locale?: string
+  giftCode?: string // Optional: gift certificate or promo code
 }
 
 function getStripe() {
@@ -28,7 +31,7 @@ export async function POST(request: NextRequest) {
   const stripe = getStripe()
   try {
     const body: CheckoutRequestBody = await request.json()
-    const { classId, sessionId, firstName, lastName, email, phone, numberOfPeople, locale = 'en' } = body
+    const { classId, sessionId, firstName, lastName, email, phone, numberOfPeople, locale = 'en', giftCode } = body
 
     // Validate required fields
     if (!classId || !firstName || !lastName || !email || !phone || !numberOfPeople) {
@@ -113,64 +116,64 @@ export async function POST(request: NextRequest) {
       sessionsToBook = [{ id: sessionDoc.id, availableSpots: sessionDoc.availableSpots }]
     }
 
-    // Check capacity across all sessions to book
-    const minAvailableSpots = Math.min(
-      ...sessionsToBook.map((s) => s.availableSpots ?? classDoc.maxCapacity ?? 0)
-    )
-
-    if (numberOfPeople > minAvailableSpots) {
-      return NextResponse.json({ error: 'Not enough capacity available' }, { status: 400 })
-    }
-
     // Calculate total price
     const totalPriceCents = (classDoc.priceCents || 0) * numberOfPeople
     const currency = classDoc.currency || 'eur'
 
-    // Reserve spots on all sessions
+    // Handle gift code discount
+    let giftDiscountCents = 0
+    let amountToChargeCents = totalPriceCents
+
+    if (giftCode) {
+      const giftService = createGiftCertificateService(payload)
+      const discountResult = await giftService.calculateDiscount(giftCode, totalPriceCents)
+
+      if ('error' in discountResult) {
+        return NextResponse.json({ error: discountResult.error }, { status: 400 })
+      }
+
+      giftDiscountCents = discountResult.discountCents
+      amountToChargeCents = discountResult.remainingToPayCents
+    }
+
+    // Reserve spots using CapacityService (handles verification and rollback)
     const sessionIds = sessionsToBook.map((s) => s.id)
-    const updatePromises = sessionsToBook.map((session) => {
-      const currentSpots = session.availableSpots ?? classDoc.maxCapacity ?? 0
-      return payload.update({
-        collection: 'sessions',
-        id: session.id,
-        data: {
-          availableSpots: currentSpots - numberOfPeople,
-        },
-      })
-    })
-    await Promise.all(updatePromises)
+    const capacityService = createCapacityService(payload)
+    const reserveResult = await capacityService.reserveSpots(sessionIds, numberOfPeople)
 
-    // Verify no session went negative (race condition check)
-    const verifiedSessions = await payload.find({
-      collection: 'sessions',
-      where: { id: { in: sessionIds } },
-      limit: 100,
-    })
-
-    const hasNegativeSpots = verifiedSessions.docs.some(
-      (s) => s.availableSpots != null && s.availableSpots < 0
-    )
-
-    if (hasNegativeSpots) {
-      // Rollback: restore spots
-      const rollbackPromises = verifiedSessions.docs.map((session) => {
-        const currentSpots = session.availableSpots ?? 0
-        return payload.update({
-          collection: 'sessions',
-          id: session.id,
-          data: {
-            availableSpots: currentSpots + numberOfPeople,
-          },
-        })
-      })
-      await Promise.all(rollbackPromises)
-
-      return NextResponse.json({ error: 'Not enough capacity available - please try again' }, { status: 409 })
+    if (!reserveResult.success) {
+      return NextResponse.json(
+        { error: reserveResult.error || 'Not enough capacity available' },
+        { status: 409 }
+      )
     }
 
     // Create booking with sessions array (expires in 10 minutes if unpaid)
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString()
     const bookingType = classDoc.type // 'class' or 'course'
+
+    // If gift code covers full amount, redirect to gift-only checkout
+    if (giftCode && amountToChargeCents === 0) {
+      return NextResponse.json({
+        success: true,
+        giftOnlyCheckout: true,
+        redirectUrl: `/api/checkout/gift-only`,
+        checkoutData: {
+          classId: classIdNum,
+          sessionIds,
+          firstName,
+          lastName,
+          email,
+          phone,
+          numberOfPeople,
+          locale,
+          giftCode,
+          giftDiscountCents,
+          totalPriceCents,
+          bookingType,
+        },
+      })
+    }
 
     let booking
     try {
@@ -188,23 +191,24 @@ export async function POST(request: NextRequest) {
           paymentStatus: 'unpaid',
           bookingDate: new Date().toISOString(),
           expiresAt,
+          // Gift code info
+          giftCertificateCode: giftCode || undefined,
+          giftCertificateAmountCents: giftDiscountCents || undefined,
+          originalPriceCents: totalPriceCents,
         },
       })
     } catch (bookingError) {
       // Rollback spots if booking creation fails
-      const rollbackPromises = verifiedSessions.docs.map((session) => {
-        const currentSpots = session.availableSpots ?? 0
-        return payload.update({
-          collection: 'sessions',
-          id: session.id,
-          data: {
-            availableSpots: currentSpots + numberOfPeople,
-          },
-        })
-      })
-      await Promise.all(rollbackPromises)
+      await capacityService.releaseSpots(sessionIds, numberOfPeople)
       throw bookingError
     }
+
+    // Fetch sessions for description building
+    const bookedSessions = await payload.find({
+      collection: 'sessions',
+      where: { id: { in: sessionIds } },
+      limit: sessionIds.length,
+    })
 
     // Build Stripe description
     const classTitle = (classDoc.title as string) || 'Booking'
@@ -214,7 +218,7 @@ export async function POST(request: NextRequest) {
       description = `Full course enrollment - ${sessionsToBook.length} sessions, ${numberOfPeople} ${numberOfPeople === 1 ? 'person' : 'people'}`
     } else {
       // Single session - get date/time
-      const firstSession = verifiedSessions.docs[0]
+      const firstSession = bookedSessions.docs[0]
       const startDateTime = new Date(firstSession.startDateTime)
       const sessionDate = startDateTime.toLocaleDateString('en-US', {
         weekday: 'long',
@@ -229,6 +233,15 @@ export async function POST(request: NextRequest) {
       description = `${sessionDate} at ${sessionTime} - ${numberOfPeople} ${numberOfPeople === 1 ? 'person' : 'people'}`
     }
 
+    // Build Stripe line item description with discount info
+    let stripeDescription = description
+    if (giftDiscountCents > 0) {
+      const discountFormatted = (giftDiscountCents / 100).toFixed(2)
+      stripeDescription += locale === 'es'
+        ? ` (Descuento aplicado: €${discountFormatted})`
+        : ` (Discount applied: €${discountFormatted})`
+    }
+
     // Create Stripe Checkout Session
     const stripeSession = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
@@ -238,9 +251,9 @@ export async function POST(request: NextRequest) {
             currency: currency.toLowerCase(),
             product_data: {
               name: classTitle,
-              description,
+              description: stripeDescription,
             },
-            unit_amount: totalPriceCents,
+            unit_amount: amountToChargeCents,
           },
           quantity: 1,
         },
@@ -259,6 +272,10 @@ export async function POST(request: NextRequest) {
         phone,
         numberOfPeople: numberOfPeople.toString(),
         locale,
+        // Gift code info
+        giftCode: giftCode || '',
+        giftDiscountCents: giftDiscountCents.toString(),
+        originalPriceCents: totalPriceCents.toString(),
       },
     })
 
