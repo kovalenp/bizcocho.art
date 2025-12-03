@@ -4,17 +4,17 @@ import type { Payload } from 'payload'
 import type { ReservationResult } from './capacity'
 
 /**
- * Unit tests for CapacityService (Payload ORM operations)
+ * Unit tests for CapacityService (Atomic SQL operations)
  *
  * Test Coverage:
- * - reserveSpots: Success (single/multiple), insufficient capacity, race conditions, errors
+ * - reserveSpots: Atomic success, insufficient capacity (atomic failure), partial failure & rollback, DB errors
  * - releaseSpots: Success (single/multiple), empty array, errors
  * - getAvailability: Success (single/multiple), not found, errors
  * - getClassSessionIds: Success, empty result, errors
  * - createCapacityService: Factory function
  */
 
-// Mock logger to prevent console output during tests
+// Mock logger
 vi.mock('../lib/logger', () => ({
   logError: vi.fn(),
   logInfo: vi.fn(),
@@ -22,19 +22,37 @@ vi.mock('../lib/logger', () => ({
   logDebug: vi.fn(),
 }))
 
+// Mock SQL helper
+vi.mock('@payloadcms/db-postgres', () => {
+  const sql = (strings: TemplateStringsArray, ...values: any[]) => ({
+    strings,
+    values,
+    toQuery: () => 'mock-query'
+  })
+  // Attach static method to the function
+  ;(sql as any).identifier = (val: string) => `"${val}"`
+  
+  return { sql }
+})
+
 describe('CapacityService', () => {
-  let mockPayload: {
-    findByID: ReturnType<typeof vi.fn>
-    find: ReturnType<typeof vi.fn>
-    update: ReturnType<typeof vi.fn>
-  }
+  let mockPayload: any
+  let mockDrizzleExecute: ReturnType<typeof vi.fn>
   let service: CapacityService
 
   beforeEach(() => {
+    mockDrizzleExecute = vi.fn()
+    
     mockPayload = {
       findByID: vi.fn(),
       find: vi.fn(),
       update: vi.fn(),
+      db: {
+        drizzle: {
+          execute: mockDrizzleExecute,
+        },
+        tableNameMap: new Map([['sessions', 'sessions_table']]),
+      },
     }
     service = new CapacityService(mockPayload as unknown as Payload)
   })
@@ -54,16 +72,14 @@ describe('CapacityService', () => {
       expect(mockPayload.find).not.toHaveBeenCalled()
     })
 
-    it('should successfully reserve spots for a single session', async () => {
-      mockPayload.find
-        .mockResolvedValueOnce({
-          docs: [{ id: 1, availableSpots: 10 }],
-        })
-        .mockResolvedValueOnce({
-          docs: [{ id: 1, availableSpots: 8 }], // After update verification
-        })
+    it('should successfully reserve spots for a single session using atomic update', async () => {
+      // Mock finding the session
+      mockPayload.find.mockResolvedValue({
+        docs: [{ id: 1, availableSpots: 10 }],
+      })
 
-      mockPayload.update.mockResolvedValue({ id: 1, availableSpots: 8 })
+      // Mock successful atomic update (returns row ID)
+      mockDrizzleExecute.mockResolvedValue({ rows: [{ id: 1 }] })
 
       const result = await service.reserveSpots([1], 2)
 
@@ -71,30 +87,25 @@ describe('CapacityService', () => {
         success: true,
         reservedSpots: 2,
       })
-      expect(mockPayload.update).toHaveBeenCalledWith({
-        collection: 'sessions',
-        id: 1,
-        data: { availableSpots: 8 },
-        req: undefined,
-      })
+      
+      // Verify SQL execution
+      expect(mockDrizzleExecute).toHaveBeenCalledTimes(1)
+      // Verify payload.update was NOT called (since we use raw SQL)
+      expect(mockPayload.update).not.toHaveBeenCalled()
     })
 
     it('should successfully reserve spots for multiple sessions', async () => {
-      mockPayload.find
-        .mockResolvedValueOnce({
-          docs: [
-            { id: 1, availableSpots: 10 },
-            { id: 2, availableSpots: 8 },
-          ],
-        })
-        .mockResolvedValueOnce({
-          docs: [
-            { id: 1, availableSpots: 8 },
-            { id: 2, availableSpots: 6 },
-          ],
-        })
+      mockPayload.find.mockResolvedValue({
+        docs: [
+          { id: 1, availableSpots: 10 },
+          { id: 2, availableSpots: 8 },
+        ],
+      })
 
-      mockPayload.update.mockResolvedValue({})
+      // Mock successful updates for both
+      mockDrizzleExecute
+        .mockResolvedValueOnce({ rows: [{ id: 1 }] })
+        .mockResolvedValueOnce({ rows: [{ id: 2 }] })
 
       const result = await service.reserveSpots([1, 2], 2)
 
@@ -102,27 +113,56 @@ describe('CapacityService', () => {
         success: true,
         reservedSpots: 2,
       })
-      expect(mockPayload.update).toHaveBeenCalledTimes(2)
+      expect(mockDrizzleExecute).toHaveBeenCalledTimes(2)
     })
 
-    it('should return error when not enough capacity', async () => {
+    it('should fail when atomic update returns no rows (insufficient capacity)', async () => {
       mockPayload.find.mockResolvedValue({
-        docs: [
-          { id: 1, availableSpots: 3 },
-          { id: 2, availableSpots: 8 },
-        ],
+        docs: [{ id: 1, availableSpots: 1 }],
       })
 
-      const result = await service.reserveSpots([1, 2], 5)
+      // Mock failed update (condition available_spots >= N failed)
+      mockDrizzleExecute.mockResolvedValue({ rows: [] })
+
+      const result = await service.reserveSpots([1], 2)
 
       expect(result).toEqual<ReservationResult>({
         success: false,
         error: 'Not enough capacity available',
       })
-      expect(mockPayload.update).not.toHaveBeenCalled()
     })
 
-    it('should return error when session not found', async () => {
+    it('should handle partial failure and rollback successful ones', async () => {
+      mockPayload.find.mockResolvedValue({
+        docs: [
+          { id: 1, availableSpots: 10 }, // Has space
+          { id: 2, availableSpots: 1 },  // Full
+        ],
+      })
+
+      // First succeeds, second fails
+      mockDrizzleExecute
+        .mockResolvedValueOnce({ rows: [{ id: 1 }] })
+        .mockResolvedValueOnce({ rows: [] })
+
+      // Mock releaseSpots internal call (uses standard payload.update)
+      mockPayload.update.mockResolvedValue({})
+      
+      // Spy on releaseSpots to ensure it's called correctly
+      const releaseSpy = vi.spyOn(service, 'releaseSpots')
+
+      const result = await service.reserveSpots([1, 2], 2)
+
+      expect(result).toEqual<ReservationResult>({
+        success: false,
+        error: 'Not enough capacity available',
+      })
+
+      // Should have attempted to rollback session 1
+      expect(releaseSpy).toHaveBeenCalledWith([1], 2, undefined)
+    })
+
+    it('should return error when session not found in initial check', async () => {
       mockPayload.find.mockResolvedValue({
         docs: [{ id: 1, availableSpots: 10 }], // Only 1 of 2 found
       })
@@ -133,32 +173,12 @@ describe('CapacityService', () => {
         success: false,
         error: 'One or more sessions not found',
       })
+      expect(mockDrizzleExecute).not.toHaveBeenCalled()
     })
 
-    it('should detect race condition (negative spots) and rollback', async () => {
-      mockPayload.find
-        .mockResolvedValueOnce({
-          docs: [{ id: 1, availableSpots: 5 }],
-        })
-        .mockResolvedValueOnce({
-          docs: [{ id: 1, availableSpots: -2 }], // Negative after update (race condition)
-        })
-
-      mockPayload.update.mockResolvedValue({})
-
-      const result = await service.reserveSpots([1], 5)
-
-      // Without transaction, should do manual rollback
-      expect(result).toEqual<ReservationResult>({
-        success: false,
-        error: 'Race condition detected - please try again',
-      })
-      // Should have called update twice: once to decrement, once to rollback
-      expect(mockPayload.update).toHaveBeenCalledTimes(2)
-    })
-
-    it('should handle exceptions and return error', async () => {
-      mockPayload.find.mockRejectedValue(new Error('Database error'))
+    it('should handle database adapter missing drizzle', async () => {
+      mockPayload.db = {} // No drizzle
+      mockPayload.find.mockResolvedValue({ docs: [{ id: 1 }] })
 
       const result = await service.reserveSpots([1], 2)
 
@@ -168,36 +188,28 @@ describe('CapacityService', () => {
       })
     })
 
-    it('should use request context when provided', async () => {
-      const mockReq = { payload: mockPayload, transactionID: 'txn-123' }
-      mockPayload.find
-        .mockResolvedValueOnce({ docs: [{ id: 1, availableSpots: 10 }] })
-        .mockResolvedValueOnce({ docs: [{ id: 1, availableSpots: 8 }] })
-      mockPayload.update.mockResolvedValue({})
+    it('should handle database exception in outer scope', async () => {
+      mockPayload.find.mockRejectedValue(new Error('DB Connection Failed'))
 
-      await service.reserveSpots([1], 2, mockReq as any)
+      const result = await service.reserveSpots([1], 2)
 
-      expect(mockPayload.find).toHaveBeenCalledWith(
-        expect.objectContaining({ req: mockReq })
-      )
-      expect(mockPayload.update).toHaveBeenCalledWith(
-        expect.objectContaining({ req: mockReq })
-      )
-    })
-
-    it('should throw error in transaction when race condition detected', async () => {
-      const mockReq = { payload: mockPayload, transactionID: 'txn-123' }
-      mockPayload.find
-        .mockResolvedValueOnce({ docs: [{ id: 1, availableSpots: 5 }] })
-        .mockResolvedValueOnce({ docs: [{ id: 1, availableSpots: -2 }] })
-      mockPayload.update.mockResolvedValue({})
-
-      const result = await service.reserveSpots([1], 5, mockReq as any)
-
-      // In transaction, throws error to trigger rollback
       expect(result).toEqual<ReservationResult>({
         success: false,
         error: 'Failed to reserve spots',
+      })
+    })
+
+    it('should handle individual atomic update error as capacity failure', async () => {
+      mockPayload.find.mockResolvedValue({ docs: [{ id: 1 }] })
+      // Mock execute throwing error
+      mockDrizzleExecute.mockRejectedValue(new Error('Constraint violation'))
+
+      const result = await service.reserveSpots([1], 2)
+
+      // Service catches individual errors and treats them as failure
+      expect(result).toEqual<ReservationResult>({
+        success: false,
+        error: 'Not enough capacity available',
       })
     })
   })

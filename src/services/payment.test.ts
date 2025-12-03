@@ -346,7 +346,10 @@ describe('PaymentService', () => {
           code: 'GIFT-1234',
           bookingId: 1,
           amountCents: 1000,
-          req: expect.objectContaining({ transactionID: 'txn-123' }),
+          skipBalanceDeduction: true,
+          req: expect.objectContaining({
+            transactionID: 'txn-123',
+          }),
         })
       })
 

@@ -71,6 +71,7 @@ export const messages = {
     successTitle: '¡Reserva Confirmada!',
     success: 'Revisa tu correo electrónico para más detalles.',
     error: 'Error al crear la reserva. Por favor, inténtalo de nuevo.',
+    errorCapacity: 'No hay suficientes plazas disponibles para esta reserva. Por favor, intenta con otra sesión o menos personas.',
     requiredField: 'Este campo es obligatorio',
     invalidEmail: 'Por favor, ingresa un correo electrónico válido',
     processing: 'Procesando...',

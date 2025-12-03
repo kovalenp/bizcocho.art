@@ -71,6 +71,7 @@ export const messages = {
     successTitle: 'Booking Confirmed!',
     success: 'Check your email for details.',
     error: 'Failed to create booking. Please try again.',
+    errorCapacity: 'Not enough spots available for this booking. Please try a different session or fewer people.',
     requiredField: 'This field is required',
     invalidEmail: 'Please enter a valid email',
     processing: 'Processing...',

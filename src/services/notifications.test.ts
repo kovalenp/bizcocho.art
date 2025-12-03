@@ -217,7 +217,7 @@ describe('NotificationService', () => {
       })
     })
 
-    it('should handle missing purchaser/recipient info gracefully', async () => {
+    it('should skip emails when purchaser/recipient info is missing', async () => {
       const cert = makeGiftCertificate({
         purchaser: undefined,
         recipient: undefined,
@@ -226,13 +226,8 @@ describe('NotificationService', () => {
 
       await service.sendGiftCertificateActivation(1)
 
-      expect(mockSendGiftCertificateToRecipient).toHaveBeenCalledWith(
-        expect.objectContaining({
-          recipientEmail: '',
-          recipientName: '',
-          purchaserName: '',
-        })
-      )
+      expect(mockSendGiftCertificateToRecipient).not.toHaveBeenCalled()
+      expect(mockSendGiftCertificatePurchaseConfirmation).not.toHaveBeenCalled()
     })
 
     it('should use Spanish locale when specified', async () => {

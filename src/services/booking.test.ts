@@ -22,6 +22,17 @@ vi.mock('./capacity', () => ({
 
 import { createCapacityService } from './capacity'
 
+// Mock GiftCertificateService
+vi.mock('./gift-certificates', () => ({
+  createGiftCertificateService: vi.fn(() => ({
+    reserveCode: vi.fn(),
+    releaseCode: vi.fn(),
+    applyCode: vi.fn(),
+  })),
+  GiftCertificateService: vi.fn(),
+}))
+import { createGiftCertificateService } from './gift-certificates'
+
 describe('BookingService', () => {
   let mockPayload: {
     find: ReturnType<typeof vi.fn>
@@ -38,6 +49,11 @@ describe('BookingService', () => {
   let mockCapacityService: {
     reserveSpots: ReturnType<typeof vi.fn>
     releaseSpots: ReturnType<typeof vi.fn>
+  }
+  let mockGiftService: {
+    reserveCode: ReturnType<typeof vi.fn>
+    releaseCode: ReturnType<typeof vi.fn>
+    applyCode: ReturnType<typeof vi.fn>
   }
   let service: BookingService
 
@@ -59,8 +75,14 @@ describe('BookingService', () => {
       reserveSpots: vi.fn(),
       releaseSpots: vi.fn(),
     }
-
     ;(createCapacityService as ReturnType<typeof vi.fn>).mockReturnValue(mockCapacityService)
+
+    mockGiftService = {
+      reserveCode: vi.fn(),
+      releaseCode: vi.fn(),
+      applyCode: vi.fn(),
+    }
+    ;(createGiftCertificateService as ReturnType<typeof vi.fn>).mockReturnValue(mockGiftService)
 
     service = new BookingService(mockPayload as unknown as Payload)
   })
@@ -250,6 +272,38 @@ describe('BookingService', () => {
       expect(mockCapacityService.releaseSpots).toHaveBeenCalledWith([1, 2, 3], 2, undefined)
     })
 
+    it('should release gift code if booking is pending and has code', async () => {
+      mockPayload.findByID.mockResolvedValue({
+        id: 1,
+        status: 'pending',
+        sessions: [1],
+        numberOfPeople: 1,
+        giftCertificateCode: 'GIFT-1234',
+        giftCertificateAmountCents: 1000,
+      })
+      mockPayload.update.mockResolvedValue({ id: 1, status: 'cancelled' })
+
+      await service.cancelBooking(1)
+
+      expect(mockGiftService.releaseCode).toHaveBeenCalledWith('GIFT-1234', 1000)
+    })
+
+    it('should NOT release gift code if status is confirmed (non-refundable by default logic here)', async () => {
+      mockPayload.findByID.mockResolvedValue({
+        id: 1,
+        status: 'confirmed',
+        sessions: [1],
+        numberOfPeople: 1,
+        giftCertificateCode: 'GIFT-1234',
+        giftCertificateAmountCents: 1000,
+      })
+      mockPayload.update.mockResolvedValue({ id: 1, status: 'cancelled' })
+
+      await service.cancelBooking(1)
+
+      expect(mockGiftService.releaseCode).not.toHaveBeenCalled()
+    })
+
     it('should skip if already cancelled', async () => {
       mockPayload.findByID.mockResolvedValue({ id: 1, status: 'cancelled' })
 
@@ -300,6 +354,25 @@ describe('BookingService', () => {
       expect(result.errors).toBe(0)
       expect(mockPayload.delete).toHaveBeenCalledTimes(2)
       expect(mockCapacityService.releaseSpots).toHaveBeenCalledTimes(2)
+    })
+
+    it('should release gift codes for expired bookings', async () => {
+      mockPayload.find.mockResolvedValue({
+        docs: [
+          {
+            id: 1,
+            sessions: [1],
+            numberOfPeople: 1,
+            giftCertificateCode: 'GIFT-1234',
+            giftCertificateAmountCents: 1000,
+          },
+        ],
+      })
+      mockPayload.delete.mockResolvedValue({})
+
+      await service.handleExpiredBookings()
+
+      expect(mockGiftService.releaseCode).toHaveBeenCalledWith('GIFT-1234', 1000)
     })
 
     it('should query for expired pending bookings', async () => {

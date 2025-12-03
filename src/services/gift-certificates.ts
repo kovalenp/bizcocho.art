@@ -1,4 +1,5 @@
 import type { Payload, PayloadRequest } from 'payload'
+import { sql } from '@payloadcms/db-postgres'
 import type { GiftCertificate } from '../payload-types'
 import { normalizeCode, formatCode } from '../lib/gift-codes'
 import { logError, logInfo } from '../lib/logger'
@@ -162,6 +163,129 @@ export class GiftCertificateService {
   }
 
   /**
+   * Atomically reserve (deduct) funds or usage from a code.
+   * Prevents race conditions during checkout.
+   */
+  async reserveCode(code: string, amountCents: number): Promise<{ success: boolean; error?: string }> {
+    const normalizedCode = formatCode(normalizeCode(code))
+    
+    try {
+      // Get access to Drizzle for atomic updates
+      const adapter = this.payload.db as unknown as {
+        drizzle: { execute: (query: any) => Promise<{ rows: any[] }> }
+        tableNameMap: Map<string, string>
+      }
+      
+      if (!adapter.drizzle || !adapter.tableNameMap) {
+         // Fallback for non-postgres adapters if needed, but we assume Postgres for now
+         throw new Error('Database adapter does not support atomic updates')
+      }
+
+      let tableName = adapter.tableNameMap.get('gift-certificates')
+      if (!tableName) {
+        // Fallback for potential slug transformation
+        tableName = adapter.tableNameMap.get('gift_certificates')
+      }
+
+      if (!tableName) {
+        console.error('Table map keys:', Array.from(adapter.tableNameMap.keys()))
+        throw new Error('Gift certificates table name not found')
+      }
+      if (!tableName) {
+        throw new Error('Gift certificates table name not found')
+      }
+
+      // Check type first to construct correct query
+      // This requires a read, but the atomic update condition will ensure safety
+      const cert = await this.findByCode(code)
+      if (!cert) {
+        return { success: false, error: 'Code not found' }
+      }
+
+      let result
+      if (cert.type === 'gift') {
+        // Atomic decrement ensuring balance >= amount
+        result = await adapter.drizzle.execute(sql`
+          UPDATE ${sql.identifier(tableName)}
+          SET "current_balance_cents" = COALESCE("current_balance_cents", 0) - ${amountCents}
+          WHERE "code" = ${normalizedCode}
+          AND COALESCE("current_balance_cents", 0) >= ${amountCents}
+          RETURNING "id"
+        `)
+      } else if (cert.type === 'promo') {
+        // Atomic increment of uses ensuring < maxUses (if limit exists)
+        result = await adapter.drizzle.execute(sql`
+          UPDATE ${sql.identifier(tableName)}
+          SET "current_uses" = COALESCE("current_uses", 0) + 1
+          WHERE "code" = ${normalizedCode}
+          AND (
+            "max_uses" IS NULL 
+            OR COALESCE("current_uses", 0) < "max_uses"
+          )
+          RETURNING "id"
+        `)
+      } else {
+        return { success: false, error: 'Invalid code type' }
+      }
+
+      if (result.rows.length === 0) {
+        return { success: false, error: 'Insufficient funds or usage limit reached' }
+      }
+
+      return { success: true }
+    } catch (error) {
+      logError('Failed to reserve code', error, { code: normalizedCode })
+      return { success: false, error: 'System error' }
+    }
+  }
+
+  /**
+   * Atomically release (refund) funds or usage to a code.
+   * Used for cancellations or rollbacks.
+   */
+  async releaseCode(code: string, amountCents: number): Promise<{ success: boolean }> {
+    const normalizedCode = formatCode(normalizeCode(code))
+
+    try {
+      const adapter = this.payload.db as unknown as {
+        drizzle: { execute: (query: any) => Promise<{ rows: any[] }> }
+        tableNameMap: Map<string, string>
+      }
+      
+      if (!adapter.drizzle || !adapter.tableNameMap) return { success: false }
+      let tableName = adapter.tableNameMap.get('gift-certificates')
+      if (!tableName) tableName = adapter.tableNameMap.get('gift_certificates')
+
+      if (!tableName) {
+        console.error('ReleaseCode: Gift certificates table name not found', Array.from(adapter.tableNameMap.keys()))
+        return { success: false }
+      }
+
+      const cert = await this.findByCode(code)
+      if (!cert) return { success: false }
+
+      if (cert.type === 'gift') {
+        await adapter.drizzle.execute(sql`
+          UPDATE ${sql.identifier(tableName)}
+          SET "current_balance_cents" = COALESCE("current_balance_cents", 0) + ${amountCents}
+          WHERE "code" = ${normalizedCode}
+        `)
+      } else if (cert.type === 'promo') {
+        await adapter.drizzle.execute(sql`
+          UPDATE ${sql.identifier(tableName)}
+          SET "current_uses" = GREATEST(0, COALESCE("current_uses", 0) - 1)
+          WHERE "code" = ${normalizedCode}
+        `)
+      }
+
+      return { success: true }
+    } catch (error) {
+      logError('Failed to release code', error, { code: normalizedCode })
+      return { success: false }
+    }
+  }
+
+  /**
    * Apply a code to a booking (deduct balance or increment uses).
    * Should be called after successful payment.
    */
@@ -169,9 +293,10 @@ export class GiftCertificateService {
     code: string
     bookingId: number
     amountCents: number
+    skipBalanceDeduction?: boolean
     req?: PayloadRequest
   }): Promise<ApplyCodeResult> {
-    const { code, bookingId, amountCents, req } = params
+    const { code, bookingId, amountCents, skipBalanceDeduction = false, req } = params
     const payload = req?.payload || this.payload
     const normalizedCode = formatCode(normalizeCode(code))
 
@@ -191,7 +316,9 @@ export class GiftCertificateService {
 
       if (cert.type === 'gift') {
         const currentBalance = cert.currentBalanceCents || 0
-        const newBalance = currentBalance - amountCents
+        // If we already reserved (skipBalanceDeduction=true), the currentBalance IS the new balance
+        // Otherwise we subtract
+        const newBalance = skipBalanceDeduction ? currentBalance : currentBalance - amountCents
 
         // Determine new status
         let newStatus: 'active' | 'partial' | 'redeemed' = 'partial'
@@ -231,7 +358,8 @@ export class GiftCertificateService {
 
       if (cert.type === 'promo') {
         const currentUses = cert.currentUses || 0
-        const newUses = currentUses + 1
+        // If reserved, currentUses is already incremented
+        const newUses = skipBalanceDeduction ? currentUses : currentUses + 1
 
         // Determine new status
         let newStatus: 'active' | 'redeemed' = 'active'

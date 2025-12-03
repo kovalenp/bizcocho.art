@@ -19,9 +19,11 @@ export type BookingFormData = {
 }
 
 export type BookingStatus = 'idle' | 'loading' | 'success' | 'error'
+export type BookingErrorKey = 'error' | 'errorCapacity' | null
 
 export type UseBookingProcessReturn = {
   status: BookingStatus
+  errorKey: BookingErrorKey
   giftDiscount: GiftDiscount | null
   numberOfPeople: number
   totalPriceCents: number
@@ -42,6 +44,7 @@ export function useBookingProcess(
   locale: string
 ): UseBookingProcessReturn {
   const [status, setStatus] = useState<BookingStatus>('idle')
+  const [errorKey, setErrorKey] = useState<BookingErrorKey>(null)
   const [giftDiscount, setGiftDiscount] = useState<GiftDiscount | null>(null)
   const [numberOfPeople, setNumberOfPeople] = useState(1)
 
@@ -61,11 +64,13 @@ export function useBookingProcess(
 
   const resetStatus = useCallback(() => {
     setStatus('idle')
+    setErrorKey(null)
   }, [])
 
   const submitBooking = useCallback(
     async (data: BookingFormData) => {
       setStatus('loading')
+      setErrorKey(null)
 
       try {
         const response = await fetch('/api/checkout/create-session', {
@@ -90,6 +95,10 @@ export function useBookingProcess(
 
         if (!response.ok) {
           console.error('Checkout API error:', result.error, result)
+          if (response.status === 409) {
+            setErrorKey('errorCapacity')
+            throw new Error('Capacity error') // Handled by setting errorKey
+          }
           throw new Error(result.error || 'Checkout session creation failed')
         }
 
@@ -125,6 +134,8 @@ export function useBookingProcess(
       } catch (error) {
         console.error('Booking error:', error)
         setStatus('error')
+        // If specific errorKey wasn't set, set generic error
+        setErrorKey((prev) => prev || 'error')
       }
     },
     [classTemplate.id, locale, giftDiscount]
@@ -132,6 +143,7 @@ export function useBookingProcess(
 
   return {
     status,
+    errorKey,
     giftDiscount,
     numberOfPeople,
     totalPriceCents,

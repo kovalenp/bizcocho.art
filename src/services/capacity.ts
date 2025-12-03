@@ -1,4 +1,5 @@
 import type { Payload, PayloadRequest } from 'payload'
+import { sql } from '@payloadcms/db-postgres'
 import { logError } from '../lib/logger'
 
 export type ReservationResult = {
@@ -22,7 +23,7 @@ export class CapacityService {
 
   /**
    * Reserve spots on one or more sessions.
-   * Uses verify-and-rollback pattern within a transaction to prevent overbooking.
+   * Uses atomic SQL updates to prevent overbooking race conditions.
    */
   async reserveSpots(
     sessionIds: number[],
@@ -36,7 +37,8 @@ export class CapacityService {
     const payload = req?.payload || this.payload
 
     try {
-      // Fetch all sessions (within transaction if req provided)
+      // Fetch all sessions to ensure they exist
+      // We still fetch them to validate existence, although the SQL update would also fail if not found
       const sessions = await payload.find({
         collection: 'sessions',
         where: { id: { in: sessionIds } },
@@ -48,63 +50,63 @@ export class CapacityService {
         return { success: false, error: 'One or more sessions not found' }
       }
 
-      // Check minimum capacity across all sessions
-      const minAvailable = Math.min(
-        ...sessions.docs.map((s) => s.availableSpots ?? 0)
-      )
-
-      if (numberOfPeople > minAvailable) {
-        return { success: false, error: 'Not enough capacity available' }
+      // Get access to Drizzle for atomic updates
+      // We assume PostgresAdapter is used
+      const adapter = payload.db as unknown as {
+        drizzle: { execute: (query: any) => Promise<{ rows: any[] }> }
+        tableNameMap: Map<string, string>
+      }
+      
+      if (!adapter.drizzle || !adapter.tableNameMap) {
+         throw new Error('Database adapter does not support atomic updates')
       }
 
-      // Decrement all sessions
-      // Note: In a real production environment with high concurrency,
-      // raw SQL update with "availableSpots = availableSpots - N" is preferred
-      // to avoid race conditions between read and write.
-      // However, wrapping this in a transaction (Serializable or with proper locking)
-      // mitigates most issues.
-      const updatePromises = sessions.docs.map((session) => {
-        const currentSpots = session.availableSpots ?? 0
-        return payload.update({
-          collection: 'sessions',
-          id: session.id,
-          data: { availableSpots: currentSpots - numberOfPeople },
-          req,
+      const tableName = adapter.tableNameMap.get('sessions')
+      if (!tableName) {
+        throw new Error('Sessions table name not found')
+      }
+
+      // Perform atomic updates in parallel
+      // We track success individually to rollback partial failures if necessary
+      const results = await Promise.all(
+        sessions.docs.map(async (session) => {
+          try {
+            // Atomic decrement: only updates if capacity >= N
+            // We use COALESCE(val, 0) to match existing logic where null/undefined is treated as 0 capacity
+            // Note: internal ID 'id' is used. 
+            const result = await adapter.drizzle.execute(sql`
+              UPDATE ${sql.identifier(tableName)}
+              SET "available_spots" = COALESCE("available_spots", 0) - ${numberOfPeople}
+              WHERE "id" = ${session.id} 
+              AND COALESCE("available_spots", 0) >= ${numberOfPeople}
+              RETURNING "id"
+            `)
+
+            return { 
+              sessionId: session.id, 
+              success: result.rows.length > 0 
+            }
+          } catch (e) {
+            logError(`Atomic update failed for session ${session.id}`, e)
+            return { sessionId: session.id, success: false }
+          }
         })
-      })
-      await Promise.all(updatePromises)
-
-      // Verify no session went negative (CRITICAL: Must happen inside same transaction)
-      const verifiedSessions = await payload.find({
-        collection: 'sessions',
-        where: { id: { in: sessionIds } },
-        limit: sessionIds.length,
-        req,
-      })
-
-      const hasNegative = verifiedSessions.docs.some(
-        (s) => s.availableSpots != null && s.availableSpots < 0
       )
 
-      if (hasNegative) {
-        // Rollback all (or let transaction rollback handle it if caller uses one)
-        // If we are in a transaction, throwing error triggers rollback up the chain
-        if (req?.transactionID) {
-           throw new Error('Overbooking detected (race condition)')
+      const failed = results.filter((r) => !r.success)
+
+      if (failed.length > 0) {
+        // Partial failure detected (e.g. one session in a course was full)
+        // Rollback any successful reservations from this batch
+        const successfulIds = results
+          .filter((r) => r.success)
+          .map((r) => r.sessionId)
+
+        if (successfulIds.length > 0) {
+          await this.releaseSpots(successfulIds, numberOfPeople, req)
         }
 
-        // Manual rollback if no transaction (fallback)
-        const rollbackPromises = verifiedSessions.docs.map((session) => {
-          const currentSpots = session.availableSpots ?? 0
-          return payload.update({
-            collection: 'sessions',
-            id: session.id,
-            data: { availableSpots: currentSpots + numberOfPeople },
-            req,
-          })
-        })
-        await Promise.all(rollbackPromises)
-        return { success: false, error: 'Race condition detected - please try again' }
+        return { success: false, error: 'Not enough capacity available' }
       }
 
       return { success: true, reservedSpots: numberOfPeople }
