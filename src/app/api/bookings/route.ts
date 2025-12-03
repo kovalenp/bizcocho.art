@@ -1,6 +1,7 @@
 import { getPayload } from 'payload'
 import config from '@payload-config'
 import { NextRequest, NextResponse } from 'next/server'
+import { createBookingService } from '@/services/booking'
 import { logError } from '@/lib/logger'
 
 type BookingRequestBody = {
@@ -26,92 +27,35 @@ export async function POST(request: NextRequest) {
     }
 
     const payload = await getPayload({ config })
+    const bookingService = createBookingService(payload)
 
-    // Check if the session exists
-    const sessionDoc = await payload.findByID({
-      collection: 'sessions',
-      id: sessionId,
-      depth: 2,
-    })
-
-    if (!sessionDoc) {
-      return NextResponse.json(
-        { error: 'Session not found' },
-        { status: 404 }
-      )
-    }
-
-    // Check if session is cancelled
-    if (sessionDoc.status === 'cancelled') {
-      return NextResponse.json(
-        { error: 'This session has been cancelled' },
-        { status: 400 }
-      )
-    }
-
-    // Get the class to determine max capacity
-    if (!sessionDoc.class) {
-      return NextResponse.json(
-        { error: 'Session has no associated class' },
-        { status: 400 }
-      )
-    }
-
-    const classDoc = typeof sessionDoc.class === 'object'
-      ? sessionDoc.class
-      : await payload.findByID({
-          collection: 'classes',
-          id: typeof sessionDoc.class === 'number' ? sessionDoc.class : parseInt(String(sessionDoc.class), 10),
-        })
-
-    // Get current available spots (use session's availableSpots if set, otherwise use class's maxCapacity)
-    const currentAvailableSpots = sessionDoc.availableSpots !== undefined && sessionDoc.availableSpots !== null
-      ? sessionDoc.availableSpots
-      : classDoc.maxCapacity || 0
-
-    // Check if there's enough capacity
-    if (numberOfPeople > currentAvailableSpots) {
-      return NextResponse.json(
-        { error: 'Not enough capacity available' },
-        { status: 400 }
-      )
-    }
-
-    // Create the booking with sessions array (unified model)
     const parsedSessionId = typeof sessionId === 'string' ? parseInt(sessionId, 10) : sessionId
-    const booking = await payload.create({
-      collection: 'bookings',
-      data: {
-        bookingType: 'class',
-        sessions: [parsedSessionId],
-        firstName,
-        lastName,
-        email,
-        phone,
-        numberOfPeople,
-        status: 'pending',
-        paymentStatus: 'unpaid',
-        bookingDate: new Date().toISOString(),
-      },
+    if (isNaN(parsedSessionId)) {
+      return NextResponse.json({ error: 'Invalid session ID' }, { status: 400 })
+    }
+
+    const result = await bookingService.createPendingBooking({
+      bookingType: 'class', // Defaulting to class for single session booking
+      sessionIds: [parsedSessionId],
+      firstName,
+      lastName,
+      email,
+      phone,
+      numberOfPeople,
     })
 
-    // Update the session's available spots
-    const newAvailableSpots = currentAvailableSpots - numberOfPeople
-
-    await payload.update({
-      collection: 'sessions',
-      id: sessionId,
-      data: {
-        availableSpots: Math.max(0, newAvailableSpots),
-      },
-    })
+    if (!result.success) {
+      // Determine status code based on error message (heuristic)
+      const status = result.error?.includes('not found') ? 404 : 400
+      return NextResponse.json({ error: result.error }, { status })
+    }
 
     return NextResponse.json(
       {
         success: true,
         booking: {
-          id: booking.id,
-          email: booking.email,
+          id: result.booking?.id,
+          email: result.booking?.email,
         }
       },
       { status: 201 }

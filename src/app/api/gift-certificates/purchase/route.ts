@@ -1,7 +1,7 @@
 import { getPayload } from 'payload'
 import config from '@payload-config'
 import { NextRequest, NextResponse } from 'next/server'
-import Stripe from 'stripe'
+import { getStripe } from '@/lib/stripe'
 import { generateCode } from '@/lib/gift-codes'
 import { logError, logInfo } from '@/lib/logger'
 import { getMessages } from '@/i18n/messages'
@@ -22,15 +22,6 @@ type PurchaseRequestBody = {
   recipientEmail: string
   personalMessage?: string
   locale?: 'en' | 'es'
-}
-
-function getStripe() {
-  if (!process.env.STRIPE_SECRET_KEY) {
-    throw new Error('STRIPE_SECRET_KEY is not configured')
-  }
-  return new Stripe(process.env.STRIPE_SECRET_KEY, {
-    apiVersion: '2025-11-17.clover',
-  })
 }
 
 function validateAmount(amountCents: number): boolean {

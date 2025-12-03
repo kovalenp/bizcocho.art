@@ -1,5 +1,6 @@
 import { getPayload } from 'payload'
 import config from '@payload-config'
+import { headers } from 'next/headers'
 import { NextRequest, NextResponse } from 'next/server'
 import { generateCode } from '@/lib/gift-codes'
 import { logError, logInfo } from '@/lib/logger'
@@ -17,6 +18,14 @@ const MAX_CODES_PER_REQUEST = 1000
 
 export async function POST(request: NextRequest) {
   try {
+    // Authenticate admin user
+    const payload = await getPayload({ config })
+    const { user } = await payload.auth({ headers: await headers() })
+
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
     const body: GeneratePromoCodesBody = await request.json()
     const { count, discountType, discountValue, maxUses, expiresAt, notes } = body
 
@@ -43,8 +52,6 @@ export async function POST(request: NextRequest) {
     if (discountType === 'fixed' && discountValue < 0) {
       return NextResponse.json({ error: 'Fixed discount must be a positive number (in cents)' }, { status: 400 })
     }
-
-    const payload = await getPayload({ config })
 
     // Generate codes
     const createdCodes: string[] = []

@@ -1,4 +1,5 @@
 import nodemailer from 'nodemailer'
+import { logError, logWarn } from './logger'
 import type { Booking, Class, Session } from '@/payload-types'
 
 type BookingWithRelations = Booking & {
@@ -53,6 +54,41 @@ const transporter = nodemailer.createTransport({
       }
     : undefined,
 })
+
+/**
+ * Helper to send email with retry logic.
+ * Retries 3 times with exponential backoff (1s, 2s, 4s).
+ */
+async function sendMailWithRetry(mailOptions: nodemailer.SendMailOptions): Promise<void> {
+  const maxRetries = 3
+  let attempt = 0
+
+  while (attempt < maxRetries) {
+    try {
+      await transporter.sendMail(mailOptions)
+      return
+    } catch (error) {
+      attempt++
+      const isLastAttempt = attempt === maxRetries
+      const delay = 1000 * Math.pow(2, attempt - 1)
+
+      if (isLastAttempt) {
+        logError('Failed to send email after retries', error, {
+          to: mailOptions.to,
+          subject: mailOptions.subject,
+          attempt,
+        })
+        throw error
+      } else {
+        logWarn(`Email send failed, retrying in ${delay}ms...`, {
+          attempt,
+          error: error instanceof Error ? error.message : error,
+        })
+        await new Promise((resolve) => setTimeout(resolve, delay))
+      }
+    }
+  }
+}
 
 export async function sendBookingConfirmationEmail({
   booking,
@@ -285,7 +321,7 @@ ${t.footer}
   `.trim()
 
   // Send email
-  await transporter.sendMail({
+  await sendMailWithRetry({
     from: process.env.SMTP_FROM || '"bizcocho.art" <noreply@bizcocho.art>',
     to: booking.email,
     subject: t.subject,
@@ -540,7 +576,7 @@ ${t.footer}
   `.trim()
 
   // Send email
-  await transporter.sendMail({
+  await sendMailWithRetry({
     from: process.env.SMTP_FROM || '"bizcocho.art" <noreply@bizcocho.art>',
     to: booking.email,
     subject: t.subject,
@@ -769,7 +805,7 @@ ${t.howToUseSteps.map((step, i) => `${i + 1}. ${step}`).join('\n')}
 ${t.footer}
   `.trim()
 
-  await transporter.sendMail({
+  await sendMailWithRetry({
     from: process.env.SMTP_FROM || '"bizcocho.art" <noreply@bizcocho.art>',
     to: recipientEmail,
     subject: t.subject,
@@ -944,7 +980,7 @@ ${t.statusLabel}: ${t.statusValue}
 ${t.footer}
   `.trim()
 
-  await transporter.sendMail({
+  await sendMailWithRetry({
     from: process.env.SMTP_FROM || '"bizcocho.art" <noreply@bizcocho.art>',
     to: purchaserEmail,
     subject: t.subject,

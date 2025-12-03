@@ -9,18 +9,21 @@ import { logError, logInfo } from '@/lib/logger'
  * Bookings expire after 10 minutes if unpaid.
  * This endpoint should be called by a cron job every 5 minutes.
  *
- * Local testing: curl http://localhost:4321/api/cron/cleanup-expired-bookings
+ * Requires CRON_SECRET environment variable for authentication.
+ * Pass it as Authorization header: `Authorization: Bearer <CRON_SECRET>`
  *
- * To secure this endpoint in production, add a secret token check:
- * - Set CRON_SECRET in environment variables
- * - Pass it as Authorization header or query parameter
+ * Local testing: curl -H "Authorization: Bearer $CRON_SECRET" http://localhost:4321/api/cron/cleanup-expired-bookings
  */
 export async function POST(request: NextRequest) {
-  // Optional: Verify cron secret for security
+  // Verify cron secret (required)
   const cronSecret = process.env.CRON_SECRET
-  const authHeader = request.headers.get('authorization')
+  if (!cronSecret) {
+    logError('CRON_SECRET environment variable is not configured', new Error('Missing CRON_SECRET'))
+    return NextResponse.json({ error: 'Server configuration error' }, { status: 500 })
+  }
 
-  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+  const authHeader = request.headers.get('authorization')
+  if (authHeader !== `Bearer ${cronSecret}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
