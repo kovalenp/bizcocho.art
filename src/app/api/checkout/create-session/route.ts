@@ -123,9 +123,10 @@ export async function POST(request: NextRequest) {
     // Handle gift code discount
     let giftDiscountCents = 0
     let amountToChargeCents = totalPriceCents
+    let giftService
 
     if (giftCode) {
-      const giftService = createGiftCertificateService(payload)
+      giftService = createGiftCertificateService(payload)
       const discountResult = await giftService.calculateDiscount(giftCode, totalPriceCents)
 
       if ('error' in discountResult) {
@@ -136,23 +137,10 @@ export async function POST(request: NextRequest) {
       amountToChargeCents = discountResult.remainingToPayCents
     }
 
-    // Reserve spots using CapacityService (handles verification and rollback)
-    const sessionIds = sessionsToBook.map((s) => s.id)
-    const capacityService = createCapacityService(payload)
-    const reserveResult = await capacityService.reserveSpots(sessionIds, numberOfPeople)
-
-    if (!reserveResult.success) {
-      return NextResponse.json(
-        { error: reserveResult.error || 'Not enough capacity available' },
-        { status: 409 }
-      )
-    }
-
-    // Create booking with sessions array (expires in 10 minutes if unpaid)
-    const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString()
-    const bookingType = classDoc.type // 'class' or 'course'
-
     // If gift code covers full amount, redirect to gift-only checkout
+    // Return early BEFORE reserving spots to avoid double-reservation (gift-only endpoint reserves them)
+    const bookingType = classDoc.type // 'class' or 'course'
+    
     if (giftCode && amountToChargeCents === 0) {
       return NextResponse.json({
         success: true,
@@ -160,7 +148,7 @@ export async function POST(request: NextRequest) {
         redirectUrl: `/api/checkout/gift-only`,
         checkoutData: {
           classId: classIdNum,
-          sessionIds,
+          sessionIds: sessionsToBook.map((s) => s.id),
           firstName,
           lastName,
           email,
@@ -174,6 +162,34 @@ export async function POST(request: NextRequest) {
         },
       })
     }
+
+    // Reserve spots using CapacityService (handles verification and rollback)
+    const sessionIds = sessionsToBook.map((s) => s.id)
+    const capacityService = createCapacityService(payload)
+    const reserveResult = await capacityService.reserveSpots(sessionIds, numberOfPeople)
+
+    if (!reserveResult.success) {
+      return NextResponse.json(
+        { error: reserveResult.error || 'Not enough capacity available' },
+        { status: 409 }
+      )
+    }
+    
+    // Reserve gift code (atomic decrement)
+    if (giftCode && giftService && giftDiscountCents > 0) {
+      const reserveCodeResult = await giftService.reserveCode(giftCode, giftDiscountCents)
+      if (!reserveCodeResult.success) {
+        // Rollback capacity if gift code reservation fails
+        await capacityService.releaseSpots(sessionIds, numberOfPeople)
+        return NextResponse.json(
+          { error: reserveCodeResult.error || 'Gift code validation failed' },
+          { status: 409 }
+        )
+      }
+    }
+
+    // Create booking with sessions array (expires in 10 minutes if unpaid)
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString()
 
     let booking
     try {
@@ -198,8 +214,12 @@ export async function POST(request: NextRequest) {
         },
       })
     } catch (bookingError) {
-      // Rollback spots if booking creation fails
+      // Rollback spots and gift code if booking creation fails
       await capacityService.releaseSpots(sessionIds, numberOfPeople)
+      
+      if (giftCode && giftService && giftDiscountCents > 0) {
+        await giftService.releaseCode(giftCode, giftDiscountCents)
+      }
       throw bookingError
     }
 

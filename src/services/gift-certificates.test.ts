@@ -18,12 +18,22 @@ vi.mock('../lib/gift-codes', () => ({
   }),
 }))
 
+// Mock SQL helper
+vi.mock('@payloadcms/db-postgres', () => {
+  const sql = (strings: TemplateStringsArray, ...values: any[]) => ({
+    strings,
+    values,
+    toQuery: () => 'mock-query'
+  })
+  // Attach static method to the function
+  ;(sql as any).identifier = (val: string) => `"${val}"`
+  
+  return { sql }
+})
+
 describe('GiftCertificateService', () => {
-  let mockPayload: {
-    find: ReturnType<typeof vi.fn>
-    findByID: ReturnType<typeof vi.fn>
-    update: ReturnType<typeof vi.fn>
-  }
+  let mockPayload: any
+  let mockDrizzleExecute: ReturnType<typeof vi.fn>
   let service: GiftCertificateService
 
   const makeGiftCertificate = (overrides: Partial<GiftCertificate> = {}): GiftCertificate => ({
@@ -56,10 +66,18 @@ describe('GiftCertificateService', () => {
   })
 
   beforeEach(() => {
+    mockDrizzleExecute = vi.fn()
+    
     mockPayload = {
       find: vi.fn(),
       findByID: vi.fn(),
       update: vi.fn(),
+      db: {
+        drizzle: {
+          execute: mockDrizzleExecute,
+        },
+        tableNameMap: new Map([['gift-certificates', 'gift_certificates_table']]),
+      },
     }
 
     service = new GiftCertificateService(mockPayload as unknown as Payload)
@@ -252,8 +270,71 @@ describe('GiftCertificateService', () => {
     })
   })
 
+  describe('reserveCode', () => {
+    it('should atomically reserve gift funds', async () => {
+      mockPayload.find.mockResolvedValue({ docs: [makeGiftCertificate()] })
+      mockDrizzleExecute.mockResolvedValue({ rows: [{ id: 1 }] })
+
+      const result = await service.reserveCode('ABCD-1234', 1000)
+
+      expect(result.success).toBe(true)
+      expect(mockDrizzleExecute).toHaveBeenCalledTimes(1)
+    })
+
+    it('should atomically reserve promo usage', async () => {
+      mockPayload.find.mockResolvedValue({ docs: [makePromoCode()] })
+      mockDrizzleExecute.mockResolvedValue({ rows: [{ id: 2 }] })
+
+      const result = await service.reserveCode('PROMO-20', 1000)
+
+      expect(result.success).toBe(true)
+      expect(mockDrizzleExecute).toHaveBeenCalledTimes(1)
+    })
+
+    it('should fail when atomic update returns no rows (insufficient funds)', async () => {
+      mockPayload.find.mockResolvedValue({ docs: [makeGiftCertificate()] })
+      mockDrizzleExecute.mockResolvedValue({ rows: [] })
+
+      const result = await service.reserveCode('ABCD-1234', 1000)
+
+      expect(result.success).toBe(false)
+      expect(result.error).toBe('Insufficient funds or usage limit reached')
+    })
+
+    it('should return error if code not found', async () => {
+      mockPayload.find.mockResolvedValue({ docs: [] })
+
+      const result = await service.reserveCode('INVALID', 1000)
+
+      expect(result.success).toBe(false)
+      expect(result.error).toBe('Code not found')
+    })
+  })
+
+  describe('releaseCode', () => {
+    it('should atomically release gift funds', async () => {
+      mockPayload.find.mockResolvedValue({ docs: [makeGiftCertificate()] })
+      mockDrizzleExecute.mockResolvedValue({ rows: [{ id: 1 }] })
+
+      const result = await service.releaseCode('ABCD-1234', 1000)
+
+      expect(result.success).toBe(true)
+      expect(mockDrizzleExecute).toHaveBeenCalledTimes(1)
+    })
+
+    it('should atomically decrement promo usage', async () => {
+      mockPayload.find.mockResolvedValue({ docs: [makePromoCode()] })
+      mockDrizzleExecute.mockResolvedValue({ rows: [{ id: 2 }] })
+
+      const result = await service.releaseCode('PROMO-20', 1000)
+
+      expect(result.success).toBe(true)
+      expect(mockDrizzleExecute).toHaveBeenCalledTimes(1)
+    })
+  })
+
   describe('applyCode', () => {
-    it('should apply gift certificate and update balance', async () => {
+    it('should apply gift certificate and update balance (default behavior)', async () => {
       const cert = makeGiftCertificate({ currentBalanceCents: 5000 })
       mockPayload.find.mockResolvedValue({ docs: [cert] })
       mockPayload.update.mockResolvedValue({})
@@ -271,6 +352,38 @@ describe('GiftCertificateService', () => {
         data: {
           currentBalanceCents: 2000,
           status: 'partial',
+          redemptions: expect.arrayContaining([
+            expect.objectContaining({
+              booking: 100,
+              amountCents: 3000,
+            }),
+          ]),
+        },
+        req: undefined,
+      })
+    })
+
+    it('should skip balance deduction when skipBalanceDeduction is true', async () => {
+      // Simulate balance ALREADY deducted (e.g. it was 5000, now 2000)
+      const cert = makeGiftCertificate({ currentBalanceCents: 2000 })
+      mockPayload.find.mockResolvedValue({ docs: [cert] })
+      mockPayload.update.mockResolvedValue({})
+
+      const result = await service.applyCode({
+        code: 'ABCD-1234',
+        bookingId: 100,
+        amountCents: 3000, // Amount being applied
+        skipBalanceDeduction: true
+      })
+
+      expect(result.success).toBe(true)
+      expect(mockPayload.update).toHaveBeenCalledWith({
+        collection: 'gift-certificates',
+        id: 1,
+        data: {
+          // Balance should remain 2000
+          currentBalanceCents: 2000,
+          status: 'partial', // Based on balance < initial
           redemptions: expect.arrayContaining([
             expect.objectContaining({
               booking: 100,
@@ -330,6 +443,29 @@ describe('GiftCertificateService', () => {
         },
         req: undefined,
       })
+    })
+
+    it('should skip uses increment for promo when skipBalanceDeduction is true', async () => {
+      const promo = makePromoCode({ currentUses: 6 }) // Already incremented
+      mockPayload.find.mockResolvedValue({ docs: [promo] })
+      mockPayload.update.mockResolvedValue({})
+
+      const result = await service.applyCode({
+        code: 'PROMO-20',
+        bookingId: 100,
+        amountCents: 1000,
+        skipBalanceDeduction: true
+      })
+
+      expect(result.success).toBe(true)
+      expect(mockPayload.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            currentUses: 6, // Unchanged
+            status: 'active',
+          })
+        })
+      )
     })
 
     it('should mark promo as redeemed when max uses reached', async () => {
@@ -465,6 +601,55 @@ describe('GiftCertificateService', () => {
       const mockPayload = {} as Payload
       const service = createGiftCertificateService(mockPayload)
       expect(service).toBeInstanceOf(GiftCertificateService)
+    })
+  })
+
+  describe('reserve and release workflow (rollback scenario)', () => {
+    it('should correctly restore funds after reserve then release (simulating checkout failure)', async () => {
+      // Simulate: reserve 3000 cents from a 5000 cent gift card
+      const cert = makeGiftCertificate({ currentBalanceCents: 5000 })
+      mockPayload.find.mockResolvedValue({ docs: [cert] })
+
+      // Reserve succeeds (atomic update returns row)
+      mockDrizzleExecute.mockResolvedValueOnce({ rows: [{ id: 1 }] })
+
+      const reserveResult = await service.reserveCode('ABCD-1234', 3000)
+      expect(reserveResult.success).toBe(true)
+      expect(mockDrizzleExecute).toHaveBeenCalledTimes(1)
+
+      // Now simulate failure - booking creation fails, so we release
+      // The release should add the amount back
+      mockDrizzleExecute.mockResolvedValueOnce({ rows: [{ id: 1 }] })
+
+      const releaseResult = await service.releaseCode('ABCD-1234', 3000)
+      expect(releaseResult.success).toBe(true)
+      expect(mockDrizzleExecute).toHaveBeenCalledTimes(2)
+    })
+
+    it('should correctly restore promo usage after reserve then release', async () => {
+      const promo = makePromoCode({ currentUses: 5, maxUses: 10 })
+      mockPayload.find.mockResolvedValue({ docs: [promo] })
+
+      // Reserve succeeds (increments uses)
+      mockDrizzleExecute.mockResolvedValueOnce({ rows: [{ id: 2 }] })
+
+      const reserveResult = await service.reserveCode('PROMO-20', 1000)
+      expect(reserveResult.success).toBe(true)
+
+      // Release (decrements uses back)
+      mockDrizzleExecute.mockResolvedValueOnce({ rows: [{ id: 2 }] })
+
+      const releaseResult = await service.releaseCode('PROMO-20', 1000)
+      expect(releaseResult.success).toBe(true)
+    })
+
+    it('should handle release gracefully even if code not found', async () => {
+      mockPayload.find.mockResolvedValue({ docs: [] })
+
+      const releaseResult = await service.releaseCode('NONEXISTENT', 1000)
+
+      // Should not throw, just return false
+      expect(releaseResult.success).toBe(false)
     })
   })
 })

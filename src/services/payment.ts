@@ -275,6 +275,7 @@ export class PaymentService {
             code: giftCode,
             bookingId,
             amountCents: giftDiscountCents,
+            skipBalanceDeduction: true, // Balance was reserved during checkout
             req
           })
 

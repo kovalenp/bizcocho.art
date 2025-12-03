@@ -1,6 +1,7 @@
 import type { Payload, PayloadRequest } from 'payload'
 import type { Booking } from '../payload-types'
 import { createCapacityService, CapacityService } from './capacity'
+import { createGiftCertificateService, GiftCertificateService } from './gift-certificates'
 import { logError, logInfo } from '../lib/logger'
 
 export type CreateBookingParams = {
@@ -46,9 +47,11 @@ export type StatusChangeResult = {
  */
 export class BookingService {
   private capacityService: CapacityService
+  private giftService: GiftCertificateService
 
   constructor(private payload: Payload) {
     this.capacityService = createCapacityService(payload)
+    this.giftService = createGiftCertificateService(payload)
   }
 
   /**
@@ -258,6 +261,20 @@ export class BookingService {
         await this.capacityService.releaseSpots(sessionIds, numberOfPeople, req)
       }
 
+      // Release gift code if pending/unpaid
+      if (
+        booking.status === 'pending' &&
+        booking.giftCertificateCode &&
+        booking.giftCertificateAmountCents &&
+        booking.giftCertificateAmountCents > 0
+      ) {
+        await this.giftService.releaseCode(
+          booking.giftCertificateCode,
+          booking.giftCertificateAmountCents
+        )
+        logInfo('Released gift code for cancelled booking', { bookingId })
+      }
+
       logInfo('Booking cancelled', { bookingId, sessionCount: sessionIds.length, numberOfPeople })
 
       return { success: true }
@@ -305,6 +322,18 @@ export class BookingService {
           // Release capacity
           if (sessionIds.length > 0 && numberOfPeople > 0) {
             await this.capacityService.releaseSpots(sessionIds, numberOfPeople, req)
+          }
+
+          // Release gift code
+          if (
+            booking.giftCertificateCode &&
+            booking.giftCertificateAmountCents &&
+            booking.giftCertificateAmountCents > 0
+          ) {
+            await this.giftService.releaseCode(
+              booking.giftCertificateCode,
+              booking.giftCertificateAmountCents
+            )
           }
 
           processed++

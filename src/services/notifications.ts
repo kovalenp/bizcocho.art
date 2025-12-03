@@ -146,33 +146,43 @@ export class NotificationService {
 
   private async sendGiftCertificateEmails(cert: GiftCertificate, locale: Locale): Promise<void> {
     const purchaserName = `${cert.purchaser?.firstName || ''} ${cert.purchaser?.lastName || ''}`.trim()
+    const recipientEmail = cert.recipient?.email
+    const purchaserEmail = cert.purchaser?.email
 
     // Send to recipient
-    await sendGiftCertificateToRecipient({
-      code: cert.code,
-      amountCents: cert.initialValueCents || 0,
-      currency: cert.currency || 'eur',
-      expiresAt: cert.expiresAt || '',
-      recipientEmail: cert.recipient?.email || '',
-      recipientName: cert.recipient?.name || '',
-      personalMessage: cert.recipient?.personalMessage || '',
-      purchaserName,
-      locale,
-    })
+    if (recipientEmail) {
+      await sendGiftCertificateToRecipient({
+        code: cert.code,
+        amountCents: cert.initialValueCents || 0,
+        currency: cert.currency || 'eur',
+        expiresAt: cert.expiresAt || '',
+        recipientEmail,
+        recipientName: cert.recipient?.name || '',
+        personalMessage: cert.recipient?.personalMessage || '',
+        purchaserName,
+        locale,
+      })
+    } else {
+      logInfo('Skipping recipient email (no email provided)', { giftCertificateId: cert.id })
+    }
 
     // Send confirmation to purchaser
-    await sendGiftCertificatePurchaseConfirmation({
-      code: cert.code,
-      amountCents: cert.initialValueCents || 0,
-      currency: cert.currency || 'eur',
-      purchaserEmail: cert.purchaser?.email || '',
-      purchaserName,
-      recipientEmail: cert.recipient?.email || '',
-      recipientName: cert.recipient?.name || '',
-      locale,
-    })
+    if (purchaserEmail) {
+      await sendGiftCertificatePurchaseConfirmation({
+        code: cert.code,
+        amountCents: cert.initialValueCents || 0,
+        currency: cert.currency || 'eur',
+        purchaserEmail,
+        purchaserName,
+        recipientEmail: recipientEmail || '',
+        recipientName: cert.recipient?.name || '',
+        locale,
+      })
+    } else {
+      logInfo('Skipping purchaser email (no email provided)', { giftCertificateId: cert.id })
+    }
 
-    logInfo('Gift certificate emails sent', { giftCertificateId: cert.id })
+    logInfo('Gift certificate emails processed', { giftCertificateId: cert.id })
   }
 
   private async sendGiftCertificateSMS(cert: GiftCertificate, _locale: Locale): Promise<void> {

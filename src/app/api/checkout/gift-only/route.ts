@@ -3,7 +3,6 @@ import config from '@payload-config'
 import { NextRequest, NextResponse } from 'next/server'
 import { createGiftCertificateService } from '@/services/gift-certificates'
 import { createCapacityService } from '@/services/capacity'
-import { sendBookingConfirmationEmail, sendCourseConfirmationEmail } from '@/lib/email'
 import { logError, logInfo } from '@/lib/logger'
 
 type GiftOnlyCheckoutBody = {
@@ -83,85 +82,81 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Fetch sessions for email
-    const bookedSessions = await payload.find({
-      collection: 'sessions',
-      where: { id: { in: sessionIds } },
-      limit: sessionIds.length,
-    })
+    // Reserve gift code (atomic decrement)
+    const reserveCodeResult = await giftService.reserveCode(giftCode, giftDiscountCents)
+    if (!reserveCodeResult.success) {
+      await capacityService.releaseSpots(sessionIds, numberOfPeople)
+      return NextResponse.json(
+        { error: reserveCodeResult.error || 'Gift code validation failed' },
+        { status: 409 }
+      )
+    }
 
-    // Create confirmed booking (no payment needed)
-    const booking = await payload.create({
-      collection: 'bookings',
-      data: {
-        bookingType,
-        sessions: sessionIds,
-        firstName,
-        lastName,
-        email,
-        phone,
-        numberOfPeople,
-        status: 'confirmed',
-        paymentStatus: 'paid', // Paid via gift code
-        bookingDate: new Date().toISOString(),
-        giftCertificateCode: giftCode,
-        giftCertificateAmountCents: giftDiscountCents,
-        stripeAmountCents: 0, // No Stripe payment
-        originalPriceCents: totalPriceCents,
-      },
-    })
+    let booking
+    try {
+      // Create confirmed booking (no payment needed)
+      booking = await payload.create({
+        collection: 'bookings',
+        data: {
+          bookingType,
+          sessions: sessionIds,
+          firstName,
+          lastName,
+          email,
+          phone,
+          numberOfPeople,
+          status: 'confirmed',
+          paymentStatus: 'paid', // Paid via gift code
+          bookingDate: new Date().toISOString(),
+          giftCertificateCode: giftCode,
+          giftCertificateAmountCents: giftDiscountCents,
+          stripeAmountCents: 0, // No Stripe payment
+          originalPriceCents: totalPriceCents,
+        },
+      })
 
-    // Apply the gift code
-    const applyResult = await giftService.applyCode({
-      code: giftCode,
-      bookingId: booking.id,
-      amountCents: giftDiscountCents,
-    })
+      // Apply the gift code (log usage only, balance already reserved)
+      const applyResult = await giftService.applyCode({
+        code: giftCode,
+        bookingId: booking.id,
+        amountCents: giftDiscountCents,
+        skipBalanceDeduction: true,
+      })
 
-    if (!applyResult.success) {
-      logError('Failed to apply gift code after booking', new Error(applyResult.error || 'Unknown error'), {
+      if (!applyResult.success) {
+        logError('Failed to apply gift code after booking', new Error(applyResult.error || 'Unknown error'), {
+          bookingId: booking.id,
+          giftCode,
+        })
+        // Don't fail the booking - it's already created. Log and continue.
+      }
+
+      logInfo('Gift-only booking confirmed', {
         bookingId: booking.id,
         giftCode,
+        giftDiscountCents,
+        bookingType,
       })
-      // Don't fail the booking - it's already created. Log and continue.
+
+      return NextResponse.json({
+        success: true,
+        bookingId: booking.id,
+        redirectUrl: `/${locale}/booking/success?booking_id=${booking.id}`,
+      })
+    } catch (error) {
+      // Rollback: release capacity and gift code on failure
+      await capacityService.releaseSpots(sessionIds, numberOfPeople)
+      await giftService.releaseCode(giftCode, giftDiscountCents)
+
+      logError('Gift-only checkout failed', error)
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      return NextResponse.json(
+        { error: 'Failed to complete gift-only checkout', details: errorMessage },
+        { status: 500 }
+      )
     }
-
-    // Send confirmation email
-    try {
-      if (bookingType === 'course') {
-        await sendCourseConfirmationEmail({
-          booking,
-          classDoc,
-          sessions: bookedSessions.docs,
-          locale,
-        })
-      } else {
-        const firstSession = bookedSessions.docs[0]
-        await sendBookingConfirmationEmail({
-          booking,
-          session: { ...firstSession, class: classDoc },
-          locale,
-        })
-      }
-    } catch (emailError) {
-      logError('Failed to send confirmation email', emailError, { bookingId: booking.id })
-      // Don't fail the booking if email fails
-    }
-
-    logInfo('Gift-only booking confirmed', {
-      bookingId: booking.id,
-      giftCode,
-      giftDiscountCents,
-      bookingType,
-    })
-
-    return NextResponse.json({
-      success: true,
-      bookingId: booking.id,
-      redirectUrl: `/${locale}/booking/success?booking_id=${booking.id}`,
-    })
   } catch (error) {
-    logError('Gift-only checkout failed', error)
+    logError('Gift-only checkout failed (outer)', error)
     const errorMessage = error instanceof Error ? error.message : 'Unknown error'
     return NextResponse.json(
       { error: 'Failed to complete gift-only checkout', details: errorMessage },
