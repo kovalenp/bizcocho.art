@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { PaymentService, createPaymentService, CreateCheckoutParams } from './payment'
 import type { Payload } from 'payload'
 import type { Booking, Class, Session } from '../payload-types'
-import Stripe from 'stripe'
 
 // Mock logger
 vi.mock('../lib/logger', () => ({
@@ -12,20 +11,24 @@ vi.mock('../lib/logger', () => ({
   logDebug: vi.fn(),
 }))
 
-// Mock Stripe
-vi.mock('stripe', () => {
-  const mockStripe = vi.fn(() => ({
-    checkout: {
-      sessions: {
-        create: vi.fn(),
-      },
-    },
-    webhooks: {
-      constructEvent: vi.fn(),
-    },
-  }))
-  return { default: mockStripe }
+// Mock Stripe instance - shared across all tests
+const mockStripeInstance = {
+  checkout: { sessions: { create: vi.fn() } },
+  webhooks: { constructEvent: vi.fn() },
+}
+
+// Mock the stripe lib using hoisted mocks
+vi.mock('../lib/stripe', () => {
+  return {
+    getStripe: vi.fn(() => mockStripeInstance),
+    createStripeClient: vi.fn(() => mockStripeInstance),
+  }
 })
+
+// Import after mock to get the mocked functions
+import { getStripe, createStripeClient } from '../lib/stripe'
+const mockGetStripe = vi.mocked(getStripe)
+const mockCreateStripeClient = vi.mocked(createStripeClient)
 
 // Mock BookingService
 const mockBookingService = {
@@ -60,10 +63,6 @@ describe('PaymentService', () => {
       commitTransaction: ReturnType<typeof vi.fn>
       rollbackTransaction: ReturnType<typeof vi.fn>
     }
-  }
-  let mockStripeInstance: {
-    checkout: { sessions: { create: ReturnType<typeof vi.fn> } }
-    webhooks: { constructEvent: ReturnType<typeof vi.fn> }
   }
   let service: PaymentService
 
@@ -128,13 +127,15 @@ describe('PaymentService', () => {
       },
     }
 
-    // Get the mock Stripe instance
-    const StripeMock = Stripe as unknown as ReturnType<typeof vi.fn>
-    mockStripeInstance = {
-      checkout: { sessions: { create: vi.fn() } },
-      webhooks: { constructEvent: vi.fn() },
-    }
-    StripeMock.mockReturnValue(mockStripeInstance)
+    // Reset mock Stripe instance methods
+    mockStripeInstance.checkout.sessions.create.mockReset()
+    mockStripeInstance.webhooks.constructEvent.mockReset()
+
+    // Reset mock lib functions and restore default implementation
+    mockGetStripe.mockReset()
+    mockGetStripe.mockReturnValue(mockStripeInstance)
+    mockCreateStripeClient.mockReset()
+    mockCreateStripeClient.mockReturnValue(mockStripeInstance)
 
     service = new PaymentService(mockPayload as unknown as Payload)
   })
@@ -147,7 +148,10 @@ describe('PaymentService', () => {
 
   describe('constructor', () => {
     it('should throw if STRIPE_SECRET_KEY is not set', () => {
-      delete process.env.STRIPE_SECRET_KEY
+      // Configure mock to throw (simulating missing env var)
+      mockGetStripe.mockImplementationOnce(() => {
+        throw new Error('STRIPE_SECRET_KEY is not configured')
+      })
 
       expect(() => new PaymentService(mockPayload as unknown as Payload)).toThrow(
         'STRIPE_SECRET_KEY is not configured'
@@ -155,9 +159,9 @@ describe('PaymentService', () => {
     })
 
     it('should accept stripeSecretKey as parameter', () => {
-      delete process.env.STRIPE_SECRET_KEY
-
+      // When stripeSecretKey is provided, createStripeClient is used instead of getStripe
       expect(() => new PaymentService(mockPayload as unknown as Payload, 'sk_test_direct')).not.toThrow()
+      expect(mockCreateStripeClient).toHaveBeenCalledWith('sk_test_direct')
     })
   })
 

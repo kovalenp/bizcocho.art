@@ -1,6 +1,7 @@
-import Stripe from 'stripe'
+import type Stripe from 'stripe'
 import type { Payload, PayloadRequest } from 'payload'
 import type { Booking, Class, Session } from '../payload-types'
+import { getStripe, createStripeClient } from '../lib/stripe'
 import { createBookingService, BookingService } from './booking'
 import { createGiftCertificateService, GiftCertificateService } from './gift-certificates'
 import { logError, logInfo, logDebug } from '../lib/logger'
@@ -51,14 +52,10 @@ export class PaymentService {
     private payload: Payload,
     stripeSecretKey?: string
   ) {
-    const secretKey = stripeSecretKey || process.env.STRIPE_SECRET_KEY
-    if (!secretKey) {
-      throw new Error('STRIPE_SECRET_KEY is not configured')
-    }
-
-    this.stripe = new Stripe(secretKey, {
-      apiVersion: '2025-11-17.clover',
-    })
+    // Use custom key if provided (for testing), otherwise use singleton
+    this.stripe = stripeSecretKey
+      ? createStripeClient(stripeSecretKey)
+      : getStripe()
 
     this.bookingService = createBookingService(payload)
     this.giftService = createGiftCertificateService(payload)

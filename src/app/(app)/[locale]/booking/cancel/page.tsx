@@ -2,8 +2,8 @@ import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { getPayload } from 'payload'
 import config from '@payload-config'
-import Stripe from 'stripe'
-import { createCapacityService } from '@/services/capacity'
+import { getStripe } from '@/lib/stripe'
+import { createBookingService } from '@/services/booking'
 import { logError } from '@/lib/logger'
 import { getMessages } from '@/i18n/messages'
 import type { Locale } from '@/i18n/config'
@@ -11,15 +11,6 @@ import type { Locale } from '@/i18n/config'
 type PageProps = {
   params: Promise<{ locale: string }>
   searchParams: Promise<{ session_id?: string }>
-}
-
-function getStripe() {
-  if (!process.env.STRIPE_SECRET_KEY) {
-    throw new Error('STRIPE_SECRET_KEY is not configured')
-  }
-  return new Stripe(process.env.STRIPE_SECRET_KEY, {
-    apiVersion: '2025-11-17.clover',
-  })
 }
 
 export default async function BookingCancelPage({ params, searchParams }: PageProps) {
@@ -30,46 +21,18 @@ export default async function BookingCancelPage({ params, searchParams }: PagePr
     redirect(`/${locale}`)
   }
 
-  // Handle cleanup: delete booking and restore spots
+  // Handle cleanup using BookingService (releases capacity + gift codes)
   try {
     const stripe = getStripe()
     const session = await stripe.checkout.sessions.retrieve(sessionId)
 
-    if (session.metadata) {
-      const bookingId = session.metadata.bookingId
-      const sessionIds = session.metadata.sessionIds // Unified: comma-separated session IDs
-      const numberOfPeople = parseInt(session.metadata.numberOfPeople || '0', 10)
+    const bookingId = session.metadata?.bookingId
+    if (bookingId) {
+      const payload = await getPayload({ config })
+      const bookingService = createBookingService(payload)
 
-      if (bookingId) {
-        const payload = await getPayload({ config })
-
-        // Check if booking exists before trying to delete
-        const existingBooking = await payload.findByID({
-          collection: 'bookings',
-          id: parseInt(bookingId, 10),
-        }).catch(() => null)
-
-        if (existingBooking && existingBooking.status === 'pending') {
-          // Delete the booking
-          await payload.delete({
-            collection: 'bookings',
-            id: parseInt(bookingId, 10),
-          })
-
-          // Restore available spots using CapacityService
-          if (sessionIds && numberOfPeople > 0) {
-            const sessionIdArray = sessionIds
-              .split(',')
-              .map((id) => parseInt(id.trim(), 10))
-              .filter((id) => !isNaN(id))
-
-            if (sessionIdArray.length > 0) {
-              const capacityService = createCapacityService(payload)
-              await capacityService.releaseSpots(sessionIdArray, numberOfPeople)
-            }
-          }
-        }
-      }
+      // Cancel booking - handles capacity release and gift code release
+      await bookingService.cancelBooking(parseInt(bookingId, 10))
     }
   } catch (error) {
     logError('Error handling cancelled booking', error, { sessionId })

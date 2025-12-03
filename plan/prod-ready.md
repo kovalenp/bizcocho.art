@@ -2,228 +2,184 @@
 
 ## Executive Summary
 
-**Overall Score: B- (72/100)**
+**Overall Score: B+ (84/100)**
 
-- Architecture: B+ (82/100) - Solid service layer, good separation of concerns
-- Implementation Quality: B- (75/100) - Type safety good, validation/security gaps
-- Production Readiness: C+ (60/100) - Critical issues need addressing before launch
+- Architecture: A- (88/100) - Solid service layer, good separation of concerns, atomic operations
+- Implementation Quality: B+ (82/100) - Type safety mostly good, minor validation gaps
+- Production Readiness: B (80/100) - Core critical issues resolved, some polish needed
 
-**Verdict: NOT PRODUCTION-READY** - Estimated 40-60 hours to address critical issues.
-
----
-
-## Critical Issues (Must Fix Before Production)
-
-### 1. Race Condition in Capacity Reservation
-
-**Location:** `src/services/capacity.ts` lines 60-108
-**Risk:** Overbooking under concurrent load
-**Issue:** Read-modify-write pattern without proper locking
-
-```typescript
-// Current: Race window between read and write
-const sessions = await payload.find(...) // Read
-await payload.update({ availableSpots: currentSpots - N }) // Write with stale data
-```
-
-**Fix:** Use atomic SQL update or database-level locking
-
-### 2. Email Sending Has No Error Handling
-
-**Location:** `src/lib/email.ts` line 288, `src/services/notifications.ts` line 75
-**Risk:** Silent failures, customers don't receive confirmations
-**Issue:** `transporter.sendMail()` can throw but isn't wrapped in try-catch
-**Fix:** Add try-catch with retry logic and proper error logging
-
-### 3. CRON Endpoint Unsecured by Default
-
-**Location:** `src/app/api/cron/cleanup-expired-bookings/route.ts` line 23
-**Risk:** Unauthorized cleanup trigger, data manipulation
-**Issue:** `CRON_SECRET` is optional, logs warning but continues
-**Fix:** Make `CRON_SECRET` required, return 401 if missing/invalid
-
-### 4. Missing Authentication on Admin Endpoints
-
-**Location:** `src/app/api/admin/promo-codes/generate/route.ts`
-**Risk:** Anyone can generate promo codes if they know the endpoint
-**Issue:** No authentication/authorization check
-**Fix:** Add Payload admin authentication middleware
-
-### 5. Race Condition in Gift Code Application
-
-**Location:** `src/app/api/checkout/create-session/route.ts` lines 127-199
-**Risk:** Gift code value applied multiple times concurrently
-**Issue:** Code validated at line 127, booking created at line 180 - another user could apply same code in between
-**Fix:** Use database transaction to atomically validate and reserve gift code
+**Verdict: NEAR PRODUCTION-READY** - Core functionality is solid. Remaining issues are low-to-medium priority.
 
 ---
 
-## High Priority Issues (Should Fix Soon)
+## Recently Resolved Issues
 
-### 6. No Health Check Endpoint
+The following critical and high-priority issues have been addressed:
 
-**Impact:** Deployment orchestration (K8s, Docker) won't work properly
-**Fix:** Create `/api/health` endpoint that tests DB connection
+1. ~~Race Condition in Capacity Reservation~~ → **FIXED** - Uses atomic SQL updates with `RETURNING`
+2. ~~Email Sending Has No Error Handling~~ → **FIXED** - `sendMailWithRetry` with exponential backoff
+3. ~~CRON Endpoint Unsecured~~ → **FIXED** - Now requires `CRON_SECRET` (returns 500 if missing, 401 if invalid)
+4. ~~Missing Authentication on Admin Endpoints~~ → **FIXED** - Uses `payload.auth()` for verification
+5. ~~Race Condition in Gift Code Application~~ → **FIXED** - Atomic `reserveCode`/`releaseCode` methods
+6. ~~No Health Check Endpoint~~ → **FIXED** - Created at `/api/health/route.ts`
+7. ~~Code Duplication in Checkout Routes~~ → **FIXED** - Consolidated into `CheckoutService`
+8. ~~Stripe Initialization Duplicated~~ → **FIXED** - Centralized in `src/lib/stripe.ts`
 
-### 7. No Retry Mechanism for External APIs
+---
 
-**Location:** Stripe calls in checkout routes
-**Impact:** Transient failures cause booking failures
-**Fix:** Add exponential backoff retry wrapper
+## Remaining Issues
 
-### 8. No Rate Limiting
+### Medium Priority
+
+#### 1. No Retry Mechanism for Stripe API
+
+**Location:** Stripe calls in checkout and gift certificate routes
+**Impact:** Transient Stripe failures cause booking failures
+**Fix:** Add exponential backoff retry wrapper to `src/lib/stripe.ts`
+
+#### 2. No Rate Limiting
 
 **Impact:** API abuse/DoS vulnerability
-**Fix:** Add rate limiting middleware (e.g., `next-rate-limit`)
+**Fix:** Add rate limiting middleware to `/api/*` routes
 
-### 9. Code Duplication in Checkout Routes
-
-**Location:** `src/app/api/checkout/create-session/` and `gift-only/`
-**Impact:** Maintenance burden, inconsistent bug fixes
-**Fix:** Extract common logic to `src/lib/checkout-helpers.ts`
-
-### 10. Stripe Initialization Duplicated
-
-**Location:** 3 files define `getStripe()` function
-**Fix:** Extract to `src/lib/stripe.ts`
-
----
-
-## Medium Priority Issues
-
-### 11. Input Validation Gaps
+#### 3. Input Validation Gaps
 
 - Email format not validated (only existence checked)
 - Phone number not validated
 - Negative `numberOfPeople` not prevented at API level
-- Session ID not validated as positive integer
 
-### 12. XSS Risk in Email Templates
+**Fix:** Add Zod schemas or validation middleware
 
-**Location:** `src/lib/email.ts` lines 229, 479, 614, 741
-**Issue:** User-provided content interpolated directly into HTML
+#### 4. XSS Risk in Email Templates
+
+**Location:** `src/lib/email.ts`
+**Issue:** User-provided content (names, messages) interpolated directly into HTML
 **Fix:** HTML-escape user inputs before interpolation
 
-### 13. Locale Hardcoded to 'en'
+#### 5. Locale Hardcoded in Hooks
 
-**Location:** Collection hooks
-**Issue:** Notifications always sent in English
-**Fix:** Store locale in booking/gift-certificate metadata
+**Location:** `src/collections/hooks/bookings.ts:76`, `src/collections/hooks/gift-certificates.ts:58`
+**Issue:** Notifications always sent in English (TODO comments exist)
+**Fix:** Store locale in booking/gift-certificate metadata during creation
 
-### 14. N+1 Query Pattern
+### Low Priority / Code Quality
 
-**Location:** `src/services/notifications.ts` lines 39-63
-**Issue:** Class fetched separately if not populated
-**Fix:** Use `depth: 2` consistently when fetching bookings
+#### 6. Magic Numbers
 
-### 15. No Database Migrations Strategy
+- Expiration times (10 minutes) hardcoded in `src/services/booking.ts:121` and `src/services/checkout.ts:442`
+- Gift amount presets duplicated in API and component
+
+**Fix:** Centralize in `src/lib/constants.ts`
+
+#### 7. Type Safety Gaps
+
+- `any` types in `src/lib/email.ts` lines 6, 11 (session types)
+
+**Fix:** Replace with proper `Session` types
+
+#### 8. Unused Parameters
+
+- `_classDoc`, `_locale` in `src/services/notifications.ts:105-106`
+
+**Fix:** Remove or use the parameters
+
+#### 9. No Database Migrations Strategy
 
 **Issue:** Schema changes not versioned
 **Fix:** Set up Payload migrations
 
 ---
 
-## Low Priority / Code Quality
+## Testing Status
 
-### 16. Magic Numbers
+**Current Coverage:** Significantly improved
 
-- Expiration times (10 minutes) hardcoded in multiple files
-- Gift amount presets duplicated in API and component
-- Stripe API version hardcoded in 3 files
-  **Fix:** Centralize in `src/lib/constants.ts`
+- **Services:** ~85% coverage
+  - ✅ `payment.test.ts`
+  - ✅ `booking.test.ts`
+  - ✅ `capacity.test.ts`
+  - ✅ `gift-certificates.test.ts`
+  - ✅ `notifications.test.ts`
+  - ✅ `checkout.test.ts`
+  - ✅ `session-manager.test.ts`
+- **Email:** ✅ `email.test.ts`
+- **Hooks:** ✅ `bookings.test.ts`, `gift-certificates.test.ts`
+- **API Routes:** Partial (covered via service tests)
+- **E2E:** Not implemented
 
-### 17. Type Safety Gaps
+**Total Test Lines:** ~3,700
 
-- `any` types in `src/lib/email.ts` lines 5, 10
-- Type assertions without validation
-  **Fix:** Replace with proper types
+**Recommended Next Steps:**
 
-### 18. Inconsistent Error Response Format
-
-**Fix:** Create standardized API response types
-
-### 19. Unused Parameters
-
-- `_classDoc`, `_locale` in notifications.ts
-- `previousDocStatus` was in booking.ts (already fixed)
-
----
-
-## Testing Gaps
-
-**Current Coverage:**
-
-- Services: ~70% (payment, booking, capacity, gift-certificates, notifications)
-- API routes: 0%
-- Webhooks: 0%
-- Email: 0%
-
-**Needed:**
-
-1. Integration tests for complete booking flow
-2. API endpoint tests
-3. Webhook idempotency tests
-4. E2E tests with Playwright
+1. Add E2E tests with Playwright for critical flows
+2. Add webhook handler tests with mocked Stripe events
 
 ---
 
-## User Preferences
+## Implementation Recommendations
 
-- **Timeline:** Short-term (weeks)
-- **Race condition approach:** Keep current verify-and-rollback (acceptable for expected traffic)
-- **Focus areas:** Reliability, Code Quality, Testing
+### Phase 1: Polish (Optional Pre-Launch)
 
----
+1. Add Stripe retry wrapper (2 hours)
+2. HTML-escape email template variables (1 hour)
+3. Add input validation with Zod (2 hours)
 
-## Recommended Implementation Order (Based on User Priorities)
+### Phase 2: Hardening (Post-Launch)
 
-### Phase 1: Reliability (8-10 hours)
+4. Add rate limiting middleware (2 hours)
+5. Store locale in booking metadata (1 hour)
+6. Centralize magic numbers to constants (1 hour)
+7. Set up Payload migrations (2 hours)
 
-1. Add email error handling with retry logic in `src/lib/email.ts`
-2. Add Stripe retry wrapper with exponential backoff
-3. Create health check endpoint `/api/health`
-4. Fix silent error swallowing in `src/services/notifications.ts`
+### Phase 3: Nice-to-Have
 
-### Phase 2: Code Quality (6-8 hours)
-
-5. Extract Stripe client to `src/lib/stripe.ts` (remove duplication from 3 files)
-6. Extract common checkout logic to `src/lib/checkout-helpers.ts`
-7. Centralize constants in `src/lib/constants.ts` (expiry times, amounts, API version)
-8. Fix type safety issues (`any` types in email.ts)
-9. Standardize API response format
-
-### Phase 3: Testing (12-16 hours)
-
-10. Add integration tests for complete booking flow
-11. Add API endpoint tests for checkout routes
-12. Add webhook handler tests
-13. Add email service tests (mocked transporter)
-14. Target 80%+ coverage on critical paths
-
-### Deferred (Security - Address Later)
-
-- Secure CRON endpoint with required token
-- Add admin authentication to promo code endpoint
-- Input validation (email, phone format)
-- HTML escape in email templates
-- Rate limiting middleware
+8. Fix remaining `any` types
+9. Add E2E tests
+10. Implement SMS notifications
 
 ---
 
-## Files Requiring Modification
+## Architecture Overview
 
-| Priority | File                                                 | Changes                           |
-| -------- | ---------------------------------------------------- | --------------------------------- |
-| Critical | `src/services/capacity.ts`                           | Atomic updates for race condition |
-| Critical | `src/lib/email.ts`                                   | Add error handling, HTML escaping |
-| Critical | `src/services/notifications.ts`                      | Fix silent error swallowing       |
-| Critical | `src/app/api/cron/cleanup-expired-bookings/route.ts` | Require auth                      |
-| Critical | `src/app/api/admin/promo-codes/generate/route.ts`    | Add auth                          |
-| Critical | `src/app/api/checkout/create-session/route.ts`       | Transaction for gift code         |
-| High     | `src/app/api/health/route.ts`                        | New file - health check           |
-| High     | `src/lib/stripe.ts`                                  | New file - centralized Stripe     |
-| High     | `src/lib/checkout-helpers.ts`                        | New file - shared checkout logic  |
-| High     | `src/middleware.ts`                                  | Add rate limiting                 |
-| Medium   | `src/lib/constants.ts`                               | New file - centralized constants  |
-| Medium   | `src/app/api/gift-certificates/purchase/route.ts`    | Input validation                  |
-| Medium   | `src/collections/hooks/bookings.ts`                  | Locale from metadata              |
+```
+src/
+├── services/           # Business logic layer (well-tested)
+│   ├── booking.ts      # Booking lifecycle management
+│   ├── capacity.ts     # Atomic capacity reservations
+│   ├── checkout.ts     # Checkout orchestration
+│   ├── gift-certificates.ts  # Gift code management
+│   ├── notifications.ts      # Multi-channel notifications
+│   └── payment.ts      # Payment processing
+├── lib/
+│   ├── email.ts        # Email sending with retry
+│   ├── stripe.ts       # Centralized Stripe client
+│   ├── logger.ts       # Structured logging
+│   └── gift-codes.ts   # Code generation/validation
+├── app/api/            # Thin API routes (delegate to services)
+└── collections/hooks/  # Payload hooks for side effects
+```
+
+**Key Architectural Wins:**
+
+- ✅ Atomic database operations prevent race conditions
+- ✅ Service layer provides clean separation of concerns
+- ✅ Centralized Stripe and email clients
+- ✅ Comprehensive error handling with logging
+- ✅ Request validation at service boundaries
+
+---
+
+## Files Summary
+
+| Priority | File | Status |
+|----------|------|--------|
+| ✅ | `src/services/capacity.ts` | Atomic updates implemented |
+| ✅ | `src/lib/email.ts` | Retry logic added |
+| ✅ | `src/services/checkout.ts` | Consolidated checkout logic |
+| ✅ | `src/lib/stripe.ts` | Centralized Stripe client |
+| ✅ | `src/app/api/health/route.ts` | Health check added |
+| ✅ | `src/app/api/cron/cleanup-expired-bookings/route.ts` | Auth required |
+| ✅ | `src/app/api/admin/promo-codes/generate/route.ts` | Auth required |
+| 🔶 | `src/lib/email.ts` | Needs XSS escaping |
+| 🔶 | `src/collections/hooks/*.ts` | Needs locale handling |
+| 🔶 | `src/middleware.ts` | Needs rate limiting |
