@@ -27,6 +27,7 @@ export function BookingWidget({
 }: BookingWidgetProps) {
   const {
     status,
+    errorKey,
     giftDiscount,
     numberOfPeople,
     totalPriceCents,
@@ -91,7 +92,7 @@ export function BookingWidget({
 
           {/* Error Message */}
           {status === 'error' && (
-            <BookingStatusMessage status={status} messages={messages} />
+            <BookingStatusMessage status={status} errorKey={errorKey} messages={messages} />
           )}
 
           {/* Booking Form - Only show when session is selected */}

@@ -2,13 +2,14 @@ import type { Messages } from '@/i18n/messages'
 
 type BookingStatusMessageProps = {
   status: 'loading' | 'success' | 'error'
+  errorKey?: 'error' | 'errorCapacity' | null
   messages: Messages
 }
 
 /**
  * Component for displaying booking status messages (loading, success, error).
  */
-export function BookingStatusMessage({ status, messages }: BookingStatusMessageProps) {
+export function BookingStatusMessage({ status, errorKey, messages }: BookingStatusMessageProps) {
   if (status === 'loading') {
     return (
       <div className="p-8 bg-blue-50 border-2 border-blue-300 rounded-lg text-center">
@@ -36,9 +37,13 @@ export function BookingStatusMessage({ status, messages }: BookingStatusMessageP
   }
 
   if (status === 'error') {
+    const errorMessage = errorKey === 'errorCapacity' 
+      ? messages.booking.errorCapacity 
+      : messages.booking.error
+
     return (
       <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg text-red-800 text-sm">
-        {messages.booking.error}
+        {errorMessage}
       </div>
     )
   }
