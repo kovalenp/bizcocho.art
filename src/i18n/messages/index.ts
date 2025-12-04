@@ -66,7 +66,14 @@ type MessageStructure = {
     pleaseWait: string
     successTitle: string
     success: string
+    successMessage: string
+    whatsNext: string
+    checkEmail: string
+    arriveEarly: string
+    cancellationPolicy: string
+    browseMore: string
     error: string
+    errorCapacity: string
     requiredField: string
     invalidEmail: string
     processing: string
@@ -189,15 +196,16 @@ export function getMessages(locale: Locale): Messages {
 // Helper function to access nested messages with type safety
 export function t(messages: Messages, key: string): string {
   const keys = key.split('.')
-  let value: any = messages
+  let value: unknown = messages
 
   for (const k of keys) {
-    value = value[k]
-    if (value === undefined) {
+    if (value && typeof value === 'object' && k in value) {
+      value = (value as Record<string, unknown>)[k]
+    } else {
       logWarn('Translation key not found', { key })
       return key
     }
   }
 
-  return value
+  return typeof value === 'string' ? value : key
 }

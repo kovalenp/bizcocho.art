@@ -20,19 +20,31 @@ vi.mock('../lib/gift-codes', () => ({
 
 // Mock SQL helper
 vi.mock('@payloadcms/db-postgres', () => {
-  const sql = (strings: TemplateStringsArray, ...values: any[]) => ({
+  const sql = (strings: TemplateStringsArray, ...values: unknown[]) => ({
     strings,
     values,
     toQuery: () => 'mock-query'
   })
   // Attach static method to the function
-  ;(sql as any).identifier = (val: string) => `"${val}"`
-  
+  ;(sql as typeof sql & { identifier: (val: string) => string }).identifier = (val: string) => `"${val}"`
+
   return { sql }
 })
 
+interface MockPayload {
+  find: ReturnType<typeof vi.fn>
+  findByID: ReturnType<typeof vi.fn>
+  update: ReturnType<typeof vi.fn>
+  db: {
+    drizzle: {
+      execute: ReturnType<typeof vi.fn>
+    }
+    tableNameMap: Map<string, string>
+  }
+}
+
 describe('GiftCertificateService', () => {
-  let mockPayload: any
+  let mockPayload: MockPayload
   let mockDrizzleExecute: ReturnType<typeof vi.fn>
   let service: GiftCertificateService
 

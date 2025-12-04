@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
+import Image from 'next/image'
 import type { Class, Tag, Media } from '@/payload-types'
 import type { Messages } from '@/i18n/messages'
 import type { Locale } from '@/i18n/config'
@@ -92,10 +93,12 @@ function ClassCard({ classDoc, messages, locale }: { classDoc: Class; messages: 
       {featuredImage?.url && (
         <div className="p-3 pb-0">
           <div className="overflow-hidden h-64 rounded-xl relative">
-            <img
+            <Image
               src={featuredImage.url}
               alt={classDoc.title as string}
-              className="w-full h-full object-cover transition-transform duration-500 ease-out group-hover:scale-110"
+              fill
+              className="object-cover transition-transform duration-500 ease-out group-hover:scale-110"
+              sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
             />
           </div>
         </div>

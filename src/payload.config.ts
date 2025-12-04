@@ -25,16 +25,7 @@ export default buildConfig({
       baseDir: path.resolve(dirname),
     },
   },
-  collections: [
-    Users,
-    Media,
-    Tags,
-    Classes,
-    Instructors,
-    Sessions,
-    Bookings,
-    GiftCertificates,
-  ],
+  collections: [Users, Media, Tags, Classes, Instructors, Sessions, Bookings, GiftCertificates],
   editor: lexicalEditor(),
   secret: process.env.PAYLOAD_SECRET || '',
   typescript: {
@@ -61,7 +52,5 @@ export default buildConfig({
   },
   sharp,
   logger,
-  plugins: [
-    // storage-adapter-placeholder
-  ],
+  plugins: [],
 })

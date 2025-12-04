@@ -24,19 +24,31 @@ vi.mock('../lib/logger', () => ({
 
 // Mock SQL helper
 vi.mock('@payloadcms/db-postgres', () => {
-  const sql = (strings: TemplateStringsArray, ...values: any[]) => ({
+  const sql = (strings: TemplateStringsArray, ...values: unknown[]) => ({
     strings,
     values,
     toQuery: () => 'mock-query'
   })
   // Attach static method to the function
-  ;(sql as any).identifier = (val: string) => `"${val}"`
-  
+  ;(sql as typeof sql & { identifier: (val: string) => string }).identifier = (val: string) => `"${val}"`
+
   return { sql }
 })
 
+interface MockPayload {
+  findByID: ReturnType<typeof vi.fn>
+  find: ReturnType<typeof vi.fn>
+  update: ReturnType<typeof vi.fn>
+  db: {
+    drizzle?: {
+      execute: ReturnType<typeof vi.fn>
+    }
+    tableNameMap?: Map<string, string>
+  }
+}
+
 describe('CapacityService', () => {
-  let mockPayload: any
+  let mockPayload: MockPayload
   let mockDrizzleExecute: ReturnType<typeof vi.fn>
   let service: CapacityService
 
@@ -274,7 +286,7 @@ describe('CapacityService', () => {
             class: { id: 100, maxCapacity: 15 },
           },
         ],
-      } as any)
+      })
 
       const result = await service.getAvailability([1])
 
@@ -293,7 +305,7 @@ describe('CapacityService', () => {
           { id: 2, availableSpots: 10, class: { id: 100, maxCapacity: 15 } },
           { id: 3, availableSpots: 6, class: { id: 100, maxCapacity: 15 } },
         ],
-      } as any)
+      })
 
       const result = await service.getAvailability([1, 2, 3])
 
@@ -306,9 +318,9 @@ describe('CapacityService', () => {
         docs: [
           { id: 1, availableSpots: 5, class: 100 }, // ID instead of object
         ],
-      } as any)
+      })
 
-      mockPayload.findByID.mockResolvedValue({ id: 100, maxCapacity: 15 } as any)
+      mockPayload.findByID.mockResolvedValue({ id: 100, maxCapacity: 15 })
 
       const result = await service.getAvailability([1])
 
@@ -328,7 +340,7 @@ describe('CapacityService', () => {
             class: { id: 100, maxCapacity: 15 },
           },
         ],
-      } as any)
+      })
 
       const result = await service.getAvailability([1])
 
@@ -336,7 +348,7 @@ describe('CapacityService', () => {
     })
 
     it('should return null when no sessions found', async () => {
-      mockPayload.find.mockResolvedValue({ docs: [] } as any)
+      mockPayload.find.mockResolvedValue({ docs: [] })
 
       const result = await service.getAvailability([999])
 
@@ -354,7 +366,7 @@ describe('CapacityService', () => {
     it('should handle missing class with zero maxCapacity', async () => {
       mockPayload.find.mockResolvedValue({
         docs: [{ id: 1, availableSpots: 5, class: null }],
-      } as any)
+      })
 
       const result = await service.getAvailability([1])
 
@@ -366,7 +378,7 @@ describe('CapacityService', () => {
     it('should return session IDs for a class', async () => {
       mockPayload.find.mockResolvedValue({
         docs: [{ id: 1 }, { id: 2 }, { id: 3 }],
-      } as any)
+      })
 
       const result = await service.getClassSessionIds(100)
 
@@ -382,7 +394,7 @@ describe('CapacityService', () => {
     })
 
     it('should return empty array when no sessions exist', async () => {
-      mockPayload.find.mockResolvedValue({ docs: [] } as any)
+      mockPayload.find.mockResolvedValue({ docs: [] })
 
       const result = await service.getClassSessionIds(999)
 

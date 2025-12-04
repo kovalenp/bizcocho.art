@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { beforeValidateBooking, afterChangeBooking } from './bookings'
-import type { Booking } from '../../payload-types'
-import type { CollectionBeforeValidateHookArgs, CollectionAfterChangeHookArgs, PayloadRequest } from 'payload'
+import type { Booking, Session } from '../../payload-types'
+import type { CollectionBeforeValidateHookArgs, CollectionAfterChangeHookArgs, PayloadRequest, CollectionConfig } from 'payload'
 
 // Mock logger
 vi.mock('../../lib/logger', () => ({
@@ -50,7 +50,7 @@ describe('Booking Hooks', () => {
       data: data as Booking,
       operation,
       req: { payload: mockPayload, ...req } as PayloadRequest,
-      collection: { slug: 'bookings' } as any,
+      collection: { slug: 'bookings' } as CollectionConfig,
       context: {},
       originalDoc: undefined,
     })
@@ -87,7 +87,7 @@ describe('Booking Hooks', () => {
 
     it('should handle populated session objects', async () => {
       mockPayload.findByID.mockResolvedValue({ id: 1, sessionType: 'class' })
-      const args = createHookArgs({ sessions: [{ id: 1 }] as any }, 'create')
+      const args = createHookArgs({ sessions: [{ id: 1 } as Session] }, 'create')
 
       const result = await beforeValidateBooking(args)
 
@@ -142,7 +142,7 @@ describe('Booking Hooks', () => {
       previousDoc,
       operation,
       req: { payload: mockPayload } as PayloadRequest,
-      collection: { slug: 'bookings' } as any,
+      collection: { slug: 'bookings' } as CollectionConfig,
       context: {},
     })
 

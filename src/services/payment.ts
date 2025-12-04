@@ -19,7 +19,7 @@ export type CreateCheckoutParams = {
   booking: Booking
   classDoc: Class
   sessions: Session[]
-  locale: 'en' | 'es'
+  locale: Locale
   amountCents: number
   giftCode?: string
   giftDiscountCents?: number
@@ -103,7 +103,7 @@ export class PaymentService {
       // Add discount info to description
       let stripeDescription = description
       if (giftDiscountCents && giftDiscountCents > 0) {
-        const messages = getMessages(locale as Locale)
+        const messages = getMessages(locale)
         const discountFormatted = (giftDiscountCents / 100).toFixed(2)
         stripeDescription += ` (${messages.payment.discountApplied} €${discountFormatted})`
       }
@@ -234,8 +234,8 @@ export class PaymentService {
     session: Stripe.Checkout.Session,
     metadata: ReturnType<typeof decodeMetadata> & { purchaseType: 'booking' }
   ): Promise<WebhookResult> {
-    const { bookingId, giftCode, giftDiscountCents } = metadata
-    
+    const { bookingId, giftCode, giftDiscountCents, locale } = metadata
+
     let transactionID: string | number | null = null
     try {
         // Start transaction
@@ -246,7 +246,9 @@ export class PaymentService {
         const req = { payload: this.payload, transactionID } as PayloadRequest
 
         // Build additional data for confirmation
-        const additionalData: Record<string, unknown> = {}
+        const additionalData: Record<string, unknown> = {
+          locale: locale || 'en',
+        }
         if (giftCode && giftDiscountCents) {
           additionalData.giftCertificateCode = giftCode
           additionalData.giftCertificateAmountCents = giftDiscountCents
@@ -307,7 +309,7 @@ export class PaymentService {
     session: Stripe.Checkout.Session,
     metadata: ReturnType<typeof decodeMetadata> & { purchaseType: 'gift_certificate' }
   ): Promise<WebhookResult> {
-    const { giftCertificateId } = metadata
+    const { giftCertificateId, locale } = metadata
 
     // Check if already activated (idempotency)
     const existingCert = await this.payload.findByID({
@@ -327,6 +329,7 @@ export class PaymentService {
       data: {
         status: 'active',
         stripePaymentIntentId: session.payment_intent as string,
+        locale: locale || 'en',
       },
     })
 

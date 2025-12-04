@@ -1,19 +1,20 @@
 import { getPayload } from 'payload'
 import config from '@payload-config'
-import type { Locale } from '@/i18n/config'
+import { isValidLocale } from '@/i18n/config'
 import { getMessages } from '@/i18n/messages'
 import { ClassFilter } from '@/components/class/ClassFilter'
 import type { Metadata } from 'next'
 
 type Props = {
   params: Promise<{
-    locale: Locale
+    locale: string
   }>
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { locale } = await params
-  const messages = getMessages(locale)
+  const validLocale = isValidLocale(locale) ? locale : 'en'
+  const messages = getMessages(validLocale)
 
   const title = messages.home.title
   const description = messages.home.subtitle
@@ -78,7 +79,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 export default async function HomePage({ params }: Props) {
   const { locale } = await params
   const payload = await getPayload({ config })
-  const messages = getMessages(locale)
+  const validLocale = isValidLocale(locale) ? locale : 'en'
+  const messages = getMessages(validLocale)
 
   // Unified: Classes collection now contains both type:'class' and type:'course'
   const [classes, tags] = await Promise.all([
@@ -91,12 +93,12 @@ export default async function HomePage({ params }: Props) {
       },
       depth: 2,
       limit: 20,
-      locale,
+      locale: validLocale,
     }),
     payload.find({
       collection: 'tags',
       limit: 100,
-      locale,
+      locale: validLocale,
     }),
   ])
 
@@ -117,7 +119,7 @@ export default async function HomePage({ params }: Props) {
         </h2>
 
         {classes.docs.length > 0 ? (
-          <ClassFilter classes={classes.docs} tags={tags.docs} messages={messages} locale={locale} />
+          <ClassFilter classes={classes.docs} tags={tags.docs} messages={messages} locale={validLocale} />
         ) : (
           <div className="text-center p-12 bg-gray-50 rounded-lg">
             <h3 className="text-gray-600 text-lg font-medium">

@@ -3,6 +3,7 @@ import type { GiftCertificate } from '../../payload-types'
 import { generateCode } from '../../lib/gift-codes'
 import { createNotificationService } from '../../services/notifications'
 import { logInfo } from '../../lib/logger'
+import type { Locale } from '../../i18n/config'
 
 /**
  * Handles gift certificate data before save.
@@ -39,7 +40,6 @@ export const beforeChangeGiftCertificate: CollectionBeforeChangeHook<GiftCertifi
 export const afterChangeGiftCertificate: CollectionAfterChangeHook<GiftCertificate> = async ({
   doc,
   previousDoc,
-  operation,
   req,
 }) => {
   // Send activation notification when gift certificate becomes active
@@ -54,9 +54,8 @@ export const afterChangeGiftCertificate: CollectionAfterChangeHook<GiftCertifica
 
     const notificationService = createNotificationService(req.payload)
     // Fire and forget - don't block the response
-    notificationService.sendGiftCertificateActivation(doc.id, {
-      locale: 'en', // TODO: Get locale from purchase metadata
-    }).catch(() => {
+    const locale = (doc.locale as Locale) || 'en'
+    notificationService.sendGiftCertificateActivation(doc.id, { locale }).catch(() => {
       // Error already logged in notification service
     })
   }

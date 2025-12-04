@@ -224,6 +224,20 @@ export const GiftCertificates: CollectionConfig = {
         description: 'Internal notes (e.g., "Black Friday 2024", "Influencer code")',
       },
     },
+    {
+      name: 'locale',
+      type: 'select',
+      options: [
+        { label: 'English', value: 'en' },
+        { label: 'Spanish', value: 'es' },
+      ],
+      defaultValue: 'en',
+      admin: {
+        description: 'Locale used during purchase (for email language)',
+        position: 'sidebar',
+        condition: (data) => data?.type === 'gift',
+      },
+    },
   ],
   hooks: {
     beforeChange: [beforeChangeGiftCertificate],

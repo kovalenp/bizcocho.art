@@ -181,7 +181,7 @@ describe('BookingService', () => {
       mockCapacityService.reserveSpots.mockResolvedValue({ success: true })
       mockPayload.create.mockResolvedValue({ id: 100, status: 'pending' })
 
-      await service.createPendingBooking({ ...validParams, req: existingReq as any })
+      await service.createPendingBooking({ ...validParams, req: existingReq as CreateBookingParams['req'] })
 
       // Should NOT start new transaction
       expect(mockPayload.db.beginTransaction).not.toHaveBeenCalled()

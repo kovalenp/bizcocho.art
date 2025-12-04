@@ -53,7 +53,7 @@ export class CapacityService {
       // Get access to Drizzle for atomic updates
       // We assume PostgresAdapter is used
       const adapter = payload.db as unknown as {
-        drizzle: { execute: (query: any) => Promise<{ rows: any[] }> }
+        drizzle: { execute: (query: unknown) => Promise<{ rows: { id: number }[] }> }
         tableNameMap: Map<string, string>
       }
       

@@ -6,13 +6,13 @@ import { GiftCertificateBalanceChecker } from '@/components/gift-certificates/Gi
 
 type Props = {
   params: Promise<{
-    locale: Locale
+    locale: string
   }>
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { locale } = await params
-  const messages = getMessages(locale)
+  const messages = getMessages(locale as Locale)
 
   const title = messages.nav.giftCertificates
   const description = messages.giftCertificates.pageSubtitle
@@ -41,7 +41,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 export default async function GiftCertificatesPage({ params }: Props) {
   const { locale } = await params
-  const messages = getMessages(locale)
+  const messages = getMessages(locale as Locale)
   const t = messages.giftCertificates
 
   return (

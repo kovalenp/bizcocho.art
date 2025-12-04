@@ -5,13 +5,13 @@ import { getMessages } from '@/i18n/messages'
 import type { Metadata } from 'next'
 
 type Props = {
-  params: Promise<{ locale: Locale }>
+  params: Promise<{ locale: string }>
   searchParams: Promise<{ session_id?: string; code?: string }>
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { locale } = await params
-  const messages = getMessages(locale)
+  const messages = getMessages(locale as Locale)
 
   return {
     title: `${messages.giftCertificates.successTitle} | bizcocho.art`,
@@ -29,7 +29,7 @@ export default async function GiftCertificateSuccessPage({ params, searchParams 
     redirect(`/${locale}/gift-certificates`)
   }
 
-  const messages = getMessages(locale)
+  const messages = getMessages(locale as Locale)
   const t = messages.giftCertificates
 
   return (

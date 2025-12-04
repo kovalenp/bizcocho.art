@@ -1,4 +1,4 @@
-import { locales, isValidLocale, type Locale } from '@/i18n/config'
+import { locales, isValidLocale } from '@/i18n/config'
 import { getMessages } from '@/i18n/messages'
 import { Navigation } from '@/components/ui/Navigation'
 import { notFound } from 'next/navigation'
@@ -6,7 +6,7 @@ import { notFound } from 'next/navigation'
 type Props = {
   children: React.ReactNode
   params: Promise<{
-    locale: Locale
+    locale: string
   }>
 }
 

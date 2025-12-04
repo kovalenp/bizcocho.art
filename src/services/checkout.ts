@@ -20,7 +20,7 @@ export type CheckoutInput = {
   sessionId?: number // Required for class bookings, optional for courses
   customer: CustomerInfo
   numberOfPeople: number
-  locale: 'en' | 'es'
+  locale: Locale
   giftCode?: string
 }
 
@@ -60,7 +60,7 @@ export type GiftOnlyCheckoutData = {
   email: string
   phone: string
   numberOfPeople: number
-  locale: 'en' | 'es'
+  locale: Locale
   giftCode: string
   giftDiscountCents: number
   totalPriceCents: number
@@ -473,7 +473,7 @@ export class CheckoutService {
     try {
       const stripe = getStripe()
       const siteUrl = process.env.SITE_URL || 'http://localhost:3000'
-      const messages = getMessages(input.locale as Locale)
+      const messages = getMessages(input.locale)
 
       // Localized date format
       const dateLocale = input.locale === 'es' ? 'es-ES' : 'en-US'
