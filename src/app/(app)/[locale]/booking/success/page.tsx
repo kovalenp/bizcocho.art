@@ -1,19 +1,37 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
+import { type Locale } from '@/i18n/config'
+import { getMessages } from '@/i18n/messages'
+import type { Metadata } from 'next'
 
-type PageProps = {
+type Props = {
+  params: Promise<{ locale: string }>
   searchParams: Promise<{ session_id?: string; booking_id?: string }>
 }
 
-export default async function BookingSuccessPage({ searchParams }: PageProps) {
-  const params = await searchParams
-  const sessionId = params.session_id
-  const bookingId = params.booking_id
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const { locale } = await params
+  const messages = getMessages(locale as Locale)
+
+  return {
+    title: `${messages.booking.successTitle} | bizcocho.art`,
+    robots: { index: false, follow: false },
+  }
+}
+
+export default async function BookingSuccessPage({ params, searchParams }: Props) {
+  const { locale } = await params
+  const search = await searchParams
+  const sessionId = search.session_id
+  const bookingId = search.booking_id
 
   // Accept either session_id (Stripe checkout) or booking_id (gift-only checkout)
   if (!sessionId && !bookingId) {
-    redirect('/')
+    redirect(`/${locale}`)
   }
+
+  const messages = getMessages(locale as Locale)
+  const t = messages.booking
 
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
@@ -40,16 +58,15 @@ export default async function BookingSuccessPage({ searchParams }: PageProps) {
 
           {/* Success Message */}
           <h1 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">
-            Booking Confirmed!
+            {t.successTitle}
           </h1>
           <p className="text-lg text-gray-600 mb-8">
-            Your payment has been processed successfully. We&apos;ve sent a confirmation email with all
-            the details to your email address.
+            {t.successMessage}
           </p>
 
           {/* Information Box */}
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 mb-8 text-left">
-            <h2 className="font-semibold text-blue-900 mb-2">What&apos;s next?</h2>
+            <h2 className="font-semibold text-blue-900 mb-2">{t.whatsNext}</h2>
             <ul className="text-blue-800 space-y-2 text-sm">
               <li className="flex items-start">
                 <svg
@@ -63,7 +80,7 @@ export default async function BookingSuccessPage({ searchParams }: PageProps) {
                     clipRule="evenodd"
                   />
                 </svg>
-                <span>Check your email for booking details and receipt</span>
+                <span>{t.checkEmail}</span>
               </li>
               <li className="flex items-start">
                 <svg
@@ -77,7 +94,7 @@ export default async function BookingSuccessPage({ searchParams }: PageProps) {
                     clipRule="evenodd"
                   />
                 </svg>
-                <span>Save the date and arrive 10 minutes early</span>
+                <span>{t.arriveEarly}</span>
               </li>
               <li className="flex items-start">
                 <svg
@@ -91,7 +108,7 @@ export default async function BookingSuccessPage({ searchParams }: PageProps) {
                     clipRule="evenodd"
                   />
                 </svg>
-                <span>Contact us if you need to cancel or reschedule (48 hours notice required)</span>
+                <span>{t.cancellationPolicy}</span>
               </li>
             </ul>
           </div>
@@ -99,16 +116,16 @@ export default async function BookingSuccessPage({ searchParams }: PageProps) {
           {/* Actions */}
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <Link
-              href="/"
+              href={`/${locale}`}
               className="inline-flex items-center justify-center px-6 py-3 border border-transparent text-base font-medium rounded-md text-white bg-primary hover:bg-primary/90 transition-colors"
             >
-              Back to Home
+              {messages.common.backToHome}
             </Link>
             <Link
-              href="/classes"
+              href={`/${locale}/offerings`}
               className="inline-flex items-center justify-center px-6 py-3 border border-gray-300 text-base font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 transition-colors"
             >
-              Browse More Classes
+              {t.browseMore}
             </Link>
           </div>
         </div>

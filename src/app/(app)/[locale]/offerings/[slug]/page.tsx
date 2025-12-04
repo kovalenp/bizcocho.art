@@ -1,17 +1,18 @@
 import { getPayload } from 'payload'
 import config from '@payload-config'
-import type { Locale } from '@/i18n/config'
+import { isValidLocale } from '@/i18n/config'
 import { getMessages } from '@/i18n/messages'
 import Link from 'next/link'
+import Image from 'next/image'
 import { notFound } from 'next/navigation'
-import type { Class, Media, Instructor, Tag } from '@/payload-types'
+import type { Class, Media, Instructor, Tag, Session } from '@/payload-types'
 import { ClassDetailLayout } from '@/components/class/ClassDetailLayout'
 import { CourseBookingButton } from '@/components/course/CourseBookingButton'
 import type { Metadata } from 'next'
 
 type Props = {
   params: Promise<{
-    locale: Locale
+    locale: string
     slug: string
   }>
 }
@@ -19,6 +20,7 @@ type Props = {
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { locale, slug } = await params
   const payload = await getPayload({ config })
+  const payloadLocale = isValidLocale(locale) ? locale : 'en'
 
   const classes = await payload.find({
     collection: 'classes',
@@ -28,7 +30,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     },
     depth: 2,
     limit: 1,
-    locale,
+    locale: payloadLocale,
   })
 
   if (classes.docs.length === 0) {
@@ -108,7 +110,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 export default async function OfferingDetailPage({ params }: Props) {
   const { locale, slug } = await params
   const payload = await getPayload({ config })
-  const messages = getMessages(locale)
+  const validLocale = isValidLocale(locale) ? locale : 'en'
+  const messages = getMessages(validLocale)
 
   const classes = await payload.find({
     collection: 'classes',
@@ -118,7 +121,7 @@ export default async function OfferingDetailPage({ params }: Props) {
     },
     depth: 2,
     limit: 1,
-    locale,
+    locale: validLocale,
   })
 
   if (classes.docs.length === 0) {
@@ -161,7 +164,7 @@ export default async function OfferingDetailPage({ params }: Props) {
       '5': { en: 'Friday', es: 'Viernes' },
       '6': { en: 'Saturday', es: 'Sábado' },
     }
-    const scheduleText = daysOfWeek.map((d) => dayNames[d]?.[locale] || '').join(', ')
+    const scheduleText = daysOfWeek.map((d) => dayNames[d]?.[validLocale] || '').join(', ')
 
     return (
       <div className="min-h-screen bg-white">
@@ -178,22 +181,29 @@ export default async function OfferingDetailPage({ params }: Props) {
             {/* Left column: Image and gallery */}
             <div>
               {featuredImage && (
-                <img
-                  src={featuredImage.url!}
-                  alt={featuredImage.alt || classDoc.title}
-                  className="w-full h-96 object-cover rounded-lg shadow-lg mb-4"
-                />
+                <div className="relative w-full h-96 rounded-lg shadow-lg mb-4 overflow-hidden">
+                  <Image
+                    src={featuredImage.url!}
+                    alt={featuredImage.alt || classDoc.title}
+                    fill
+                    className="object-cover"
+                    sizes="(max-width: 1024px) 100vw, 50vw"
+                  />
+                </div>
               )}
               {gallery.length > 0 && (
                 <div className="grid grid-cols-3 gap-2">
                   {gallery.map((image, index) =>
                     image?.url ? (
-                      <img
-                        key={image.id || index}
-                        src={image.url}
-                        alt={image.alt || `Gallery ${index + 1}`}
-                        className="w-full h-24 object-cover rounded"
-                      />
+                      <div key={image.id || index} className="relative h-24 rounded overflow-hidden">
+                        <Image
+                          src={image.url}
+                          alt={image.alt || `Gallery ${index + 1}`}
+                          fill
+                          className="object-cover"
+                          sizes="(max-width: 1024px) 33vw, 16vw"
+                        />
+                      </div>
                     ) : null
                   )}
                 </div>
@@ -298,7 +308,7 @@ export default async function OfferingDetailPage({ params }: Props) {
                     {messages.course.courseDates}
                   </h3>
                   <div className="space-y-2">
-                    {sessions.docs.map((session: any, index) => {
+                    {sessions.docs.map((session: Session, index) => {
                       const startDate = new Date(session.startDateTime)
                       const dateStr = startDate.toLocaleDateString(
                         locale === 'es' ? 'es-ES' : 'en-US',
@@ -327,7 +337,7 @@ export default async function OfferingDetailPage({ params }: Props) {
                 availableSpots={Math.min(
                   ...sessions.docs.map((s) => s.availableSpots ?? classDoc.maxCapacity ?? 10)
                 )}
-                locale={locale}
+                locale={validLocale}
                 messages={messages}
               />
             </div>
@@ -353,11 +363,15 @@ export default async function OfferingDetailPage({ params }: Props) {
               </h2>
               <div className="flex items-start gap-4">
                 {instructor.photo && typeof instructor.photo === 'object' && (
-                  <img
-                    src={(instructor.photo as Media).url!}
-                    alt={instructor.name}
-                    className="w-20 h-20 rounded-full object-cover"
-                  />
+                  <div className="relative w-20 h-20 rounded-full overflow-hidden flex-shrink-0">
+                    <Image
+                      src={(instructor.photo as Media).url!}
+                      alt={instructor.name}
+                      fill
+                      className="object-cover"
+                      sizes="80px"
+                    />
+                  </div>
                 )}
                 <div>
                   <h3 className="font-semibold text-lg">{instructor.name}</h3>

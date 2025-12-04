@@ -4,13 +4,13 @@ import type { Metadata } from 'next'
 
 type Props = {
   params: Promise<{
-    locale: Locale
+    locale: string
   }>
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { locale } = await params
-  const messages = getMessages(locale)
+  const messages = getMessages(locale as Locale)
 
   const title = messages.nav.about
   const description = messages.about.metaDescription
@@ -39,7 +39,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 export default async function AboutPage({ params }: Props) {
   const { locale } = await params
-  const messages = getMessages(locale)
+  const messages = getMessages(locale as Locale)
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">

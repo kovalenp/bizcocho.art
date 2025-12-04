@@ -75,6 +75,7 @@ export interface Config {
     sessions: Session;
     bookings: Booking;
     'gift-certificates': GiftCertificate;
+    'payload-kv': PayloadKv;
     'payload-locked-documents': PayloadLockedDocument;
     'payload-preferences': PayloadPreference;
     'payload-migrations': PayloadMigration;
@@ -93,6 +94,7 @@ export interface Config {
     sessions: SessionsSelect<false> | SessionsSelect<true>;
     bookings: BookingsSelect<false> | BookingsSelect<true>;
     'gift-certificates': GiftCertificatesSelect<false> | GiftCertificatesSelect<true>;
+    'payload-kv': PayloadKvSelect<false> | PayloadKvSelect<true>;
     'payload-locked-documents': PayloadLockedDocumentsSelect<false> | PayloadLockedDocumentsSelect<true>;
     'payload-preferences': PayloadPreferencesSelect<false> | PayloadPreferencesSelect<true>;
     'payload-migrations': PayloadMigrationsSelect<false> | PayloadMigrationsSelect<true>;
@@ -100,6 +102,7 @@ export interface Config {
   db: {
     defaultIDType: number;
   };
+  fallbackLocale: ('false' | 'none' | 'null') | false | null | ('en' | 'es') | ('en' | 'es')[];
   globals: {};
   globalsSelect: {};
   locale: 'en' | 'es';
@@ -414,6 +417,10 @@ export interface Booking {
    * Internal notes or special requests
    */
   notes?: string | null;
+  /**
+   * Locale used during booking (for email language)
+   */
+  locale?: ('en' | 'es') | null;
   updatedAt: string;
   createdAt: string;
 }
@@ -509,8 +516,29 @@ export interface GiftCertificate {
    * Internal notes (e.g., "Black Friday 2024", "Influencer code")
    */
   notes?: string | null;
+  /**
+   * Locale used during purchase (for email language)
+   */
+  locale?: ('en' | 'es') | null;
   updatedAt: string;
   createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "payload-kv".
+ */
+export interface PayloadKv {
+  id: number;
+  key: string;
+  data:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
@@ -739,6 +767,7 @@ export interface BookingsSelect<T extends boolean = true> {
   expiresAt?: T;
   checkedIn?: T;
   notes?: T;
+  locale?: T;
   updatedAt?: T;
   createdAt?: T;
 }
@@ -783,8 +812,17 @@ export interface GiftCertificatesSelect<T extends boolean = true> {
         id?: T;
       };
   notes?: T;
+  locale?: T;
   updatedAt?: T;
   createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "payload-kv_select".
+ */
+export interface PayloadKvSelect<T extends boolean = true> {
+  key?: T;
+  data?: T;
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema

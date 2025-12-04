@@ -172,7 +172,7 @@ export class GiftCertificateService {
     try {
       // Get access to Drizzle for atomic updates
       const adapter = this.payload.db as unknown as {
-        drizzle: { execute: (query: any) => Promise<{ rows: any[] }> }
+        drizzle: { execute: (query: unknown) => Promise<{ rows: { id: number }[] }> }
         tableNameMap: Map<string, string>
       }
       
@@ -248,10 +248,10 @@ export class GiftCertificateService {
 
     try {
       const adapter = this.payload.db as unknown as {
-        drizzle: { execute: (query: any) => Promise<{ rows: any[] }> }
+        drizzle: { execute: (query: unknown) => Promise<{ rows: { id: number }[] }> }
         tableNameMap: Map<string, string>
       }
-      
+
       if (!adapter.drizzle || !adapter.tableNameMap) return { success: false }
       let tableName = adapter.tableNameMap.get('gift-certificates')
       if (!tableName) tableName = adapter.tableNameMap.get('gift_certificates')

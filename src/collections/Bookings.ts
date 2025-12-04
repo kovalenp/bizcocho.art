@@ -216,6 +216,19 @@ export const Bookings: CollectionConfig = {
         description: 'Internal notes or special requests',
       },
     },
+    {
+      name: 'locale',
+      type: 'select',
+      options: [
+        { label: 'English', value: 'en' },
+        { label: 'Spanish', value: 'es' },
+      ],
+      defaultValue: 'en',
+      admin: {
+        description: 'Locale used during booking (for email language)',
+        position: 'sidebar',
+      },
+    },
   ],
   hooks: {
     beforeValidate: [beforeValidateBooking],

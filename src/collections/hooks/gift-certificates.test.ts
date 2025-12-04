@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { beforeChangeGiftCertificate, afterChangeGiftCertificate } from './gift-certificates'
 import type { GiftCertificate } from '../../payload-types'
-import type { CollectionBeforeChangeHookArgs, CollectionAfterChangeHookArgs, PayloadRequest } from 'payload'
+import type { CollectionBeforeChangeHookArgs, CollectionAfterChangeHookArgs, PayloadRequest, CollectionConfig } from 'payload'
 
 // Mock logger
 vi.mock('../../lib/logger', () => ({
@@ -39,7 +39,7 @@ describe('Gift Certificate Hooks', () => {
       data: data as GiftCertificate,
       operation,
       req: {} as PayloadRequest,
-      collection: { slug: 'gift-certificates' } as any,
+      collection: { slug: 'gift-certificates' } as CollectionConfig,
       context: {},
       originalDoc: undefined,
     })
@@ -118,7 +118,7 @@ describe('Gift Certificate Hooks', () => {
       previousDoc: previousDoc as GiftCertificate | undefined,
       operation,
       req: { payload: {} } as PayloadRequest,
-      collection: { slug: 'gift-certificates' } as any,
+      collection: { slug: 'gift-certificates' } as CollectionConfig,
       context: {},
     })
 

@@ -75,11 +75,17 @@ const nextConfig = {
     ]
   },
 
-  webpack: (webpackConfig) => {
+  webpack: (webpackConfig, { isServer }) => {
     webpackConfig.resolve.extensionAlias = {
       '.cjs': ['.cts', '.cjs'],
       '.js': ['.ts', '.tsx', '.js', '.jsx'],
       '.mjs': ['.mts', '.mjs'],
+    }
+
+    // Fix thread-stream worker path issue with pino
+    if (isServer) {
+      webpackConfig.externals = webpackConfig.externals || []
+      webpackConfig.externals.push('pino', 'pino-pretty', 'thread-stream')
     }
 
     return webpackConfig

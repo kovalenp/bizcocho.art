@@ -3,6 +3,7 @@ import type { Booking } from '../../payload-types'
 import { createBookingService } from '../../services/booking'
 import { createNotificationService } from '../../services/notifications'
 import { logInfo } from '../../lib/logger'
+import type { Locale } from '../../i18n/config'
 
 /**
  * Validates booking data before save.
@@ -72,9 +73,8 @@ export const afterChangeBooking: CollectionAfterChangeHook<Booking> = async ({
 
       const notificationService = createNotificationService(req.payload)
       // Fire and forget - don't block the response
-      notificationService.sendBookingConfirmation(doc.id, {
-        locale: 'en', // TODO: Get locale from booking metadata or user preference
-      }).catch(() => {
+      const locale = (doc.locale as Locale) || 'en'
+      notificationService.sendBookingConfirmation(doc.id, { locale }).catch(() => {
         // Error already logged in notification service
       })
     }
