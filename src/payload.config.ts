@@ -25,8 +25,8 @@ const dirname = path.dirname(filename)
  * In production, files are stored in Cloudflare R2.
  */
 const getStoragePlugins = () => {
-  // Skip R2 in development or if not configured
-  if (process.env.NODE_ENV !== 'production' || !process.env.R2_BUCKET) {
+  // Skip R2 if not configured (works in both dev and prod when credentials are set)
+  if (!process.env.R2_BUCKET || !process.env.R2_ACCESS_KEY_ID) {
     return []
   }
 
@@ -35,6 +35,7 @@ const getStoragePlugins = () => {
       collections: {
         media: {
           prefix: 'media',
+          disableLocalStorage: true,
           generateFileURL: ({ filename, prefix }) => {
             const baseUrl =
               process.env.R2_PUBLIC_URL ||
@@ -43,7 +44,7 @@ const getStoragePlugins = () => {
           },
         },
       },
-      bucket: process.env.R2_BUCKET,
+      bucket: process.env.R2_BUCKET!,
       config: {
         credentials: {
           accessKeyId: process.env.R2_ACCESS_KEY_ID || '',
