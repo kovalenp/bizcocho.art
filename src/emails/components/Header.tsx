@@ -15,7 +15,7 @@ export function Header({ title, accentColor = '#000000', assetBaseUrl }: HeaderP
   return (
     <Section className="text-center mb-10 pb-8 border-b border-gray-200">
       <Img
-        src={`${baseUrl}/logo.png`}
+        src={`${baseUrl}/media/logo.png`}
         width="140"
         height="48"
         alt="bizcocho.art"
