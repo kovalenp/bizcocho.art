@@ -71,7 +71,6 @@ COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/scripts/start.sh ./start.sh
-COPY --from=builder /app/src/migrations ./src/migrations
 
 # Make start script executable
 RUN chmod +x ./start.sh
