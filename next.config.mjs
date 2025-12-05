@@ -1,10 +1,56 @@
 import { withPayload } from '@payloadcms/next/withPayload'
 
+// Build remote patterns dynamically from environment variables
+const buildRemotePatterns = () => {
+  const patterns = [
+    // Local development
+    {
+      protocol: 'http',
+      hostname: 'localhost',
+      port: '4321',
+      pathname: '/api/media/file/**',
+    },
+  ]
+
+  // Add SITE_URL domain (e.g., bizcocho.art or test.bizcocho.art)
+  if (process.env.SITE_URL) {
+    try {
+      const siteUrl = new URL(process.env.SITE_URL)
+      patterns.push({
+        protocol: siteUrl.protocol.replace(':', ''),
+        hostname: siteUrl.hostname,
+        pathname: '/api/media/file/**',
+      })
+    } catch {
+      // Invalid URL, skip
+    }
+  }
+
+  // Add R2 assets domain (e.g., assets.bizcocho.art or assets-test.bizcocho.art)
+  if (process.env.R2_PUBLIC_URL) {
+    try {
+      const r2Url = new URL(process.env.R2_PUBLIC_URL)
+      patterns.push({
+        protocol: r2Url.protocol.replace(':', ''),
+        hostname: r2Url.hostname,
+        pathname: '/**',
+      })
+    } catch {
+      // Invalid URL, skip
+    }
+  }
+
+  return patterns
+}
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   // Performance optimizations
   reactStrictMode: true,
   poweredByHeader: false,
+
+  // Standalone output for Docker deployment
+  output: 'standalone',
 
   // Image optimization
   images: {
@@ -12,19 +58,7 @@ const nextConfig = {
     deviceSizes: [640, 750, 828, 1080, 1200, 1920, 2048],
     imageSizes: [16, 32, 48, 64, 96, 128, 256, 384],
     minimumCacheTTL: 60,
-    remotePatterns: [
-      {
-        protocol: 'http',
-        hostname: 'localhost',
-        port: '4321',
-        pathname: '/api/media/file/**',
-      },
-      {
-        protocol: 'https',
-        hostname: 'bizcocho.art',
-        pathname: '/api/media/file/**',
-      },
-    ],
+    remotePatterns: buildRemotePatterns(),
   },
 
   // Compression

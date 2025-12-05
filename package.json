@@ -24,7 +24,10 @@
     "test": "cross-env NODE_OPTIONS=--no-deprecation vitest run",
     "test:watch": "cross-env NODE_OPTIONS=--no-deprecation vitest watch",
     "test:coverage": "cross-env NODE_OPTIONS=--no-deprecation vitest run --coverage",
-    "clean": "rm -rf .next"
+    "clean": "rm -rf .next",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down",
+    "docker:logs": "docker compose logs -f"
   },
   "dependencies": {
     "@payloadcms/db-postgres": "3.66.0",
