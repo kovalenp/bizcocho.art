@@ -10,6 +10,17 @@ const buildRemotePatterns = () => {
       port: '4321',
       pathname: '/api/media/file/**',
     },
+    // R2 assets - hardcoded fallback
+    {
+      protocol: 'https',
+      hostname: 'assets-test.bizcocho.art',
+      pathname: '/**',
+    },
+    {
+      protocol: 'https',
+      hostname: 'assets.bizcocho.art',
+      pathname: '/**',
+    },
   ]
 
   // Add SITE_URL domain (e.g., bizcocho.art or test.bizcocho.art)
