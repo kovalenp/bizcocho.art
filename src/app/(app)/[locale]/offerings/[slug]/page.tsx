@@ -10,6 +10,9 @@ import { ClassDetailLayout } from '@/components/class/ClassDetailLayout'
 import { CourseBookingButton } from '@/components/course/CourseBookingButton'
 import type { Metadata } from 'next'
 
+// Render at request time (DB not available during build)
+export const dynamic = 'force-dynamic'
+
 type Props = {
   params: Promise<{
     locale: string
