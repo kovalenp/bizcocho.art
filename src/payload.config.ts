@@ -58,6 +58,7 @@ const getStoragePlugins = () => {
 }
 
 export default buildConfig({
+  serverURL: process.env.SITE_URL || 'http://localhost:4321',
   admin: {
     user: Users.slug,
     importMap: {
