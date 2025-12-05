@@ -8,6 +8,9 @@ import { logError } from '@/lib/logger'
 import { getMessages } from '@/i18n/messages'
 import type { Locale } from '@/i18n/config'
 
+// Render at request time (DB not available during build)
+export const dynamic = 'force-dynamic'
+
 type PageProps = {
   params: Promise<{ locale: string }>
   searchParams: Promise<{ session_id?: string }>

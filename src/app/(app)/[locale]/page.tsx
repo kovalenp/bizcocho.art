@@ -5,6 +5,9 @@ import { getMessages } from '@/i18n/messages'
 import { ClassFilter } from '@/components/class/ClassFilter'
 import type { Metadata } from 'next'
 
+// Render at request time (DB not available during build)
+export const dynamic = 'force-dynamic'
+
 type Props = {
   params: Promise<{
     locale: string
