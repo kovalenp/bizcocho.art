@@ -1,5 +1,6 @@
 import { postgresAdapter } from '@payloadcms/db-postgres'
 import { lexicalEditor } from '@payloadcms/richtext-lexical'
+import { s3Storage } from '@payloadcms/storage-s3'
 import path from 'path'
 import { buildConfig } from 'payload'
 import { fileURLToPath } from 'url'
@@ -17,6 +18,43 @@ import { logger } from './lib/logger'
 
 const filename = fileURLToPath(import.meta.url)
 const dirname = path.dirname(filename)
+
+/**
+ * Configure S3/R2 storage for production environments.
+ * In development, files are stored locally in /media.
+ * In production, files are stored in Cloudflare R2.
+ */
+const getStoragePlugins = () => {
+  // Skip R2 in development or if not configured
+  if (process.env.NODE_ENV !== 'production' || !process.env.R2_BUCKET) {
+    return []
+  }
+
+  return [
+    s3Storage({
+      collections: {
+        media: {
+          prefix: 'media',
+          generateFileURL: ({ filename, prefix }) => {
+            const baseUrl =
+              process.env.R2_PUBLIC_URL ||
+              `https://${process.env.R2_BUCKET}.${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`
+            return `${baseUrl}/${prefix}/${filename}`
+          },
+        },
+      },
+      bucket: process.env.R2_BUCKET,
+      config: {
+        credentials: {
+          accessKeyId: process.env.R2_ACCESS_KEY_ID || '',
+          secretAccessKey: process.env.R2_SECRET_ACCESS_KEY || '',
+        },
+        endpoint: `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+        region: 'auto', // R2 uses 'auto' for region
+      },
+    }),
+  ]
+}
 
 export default buildConfig({
   admin: {
@@ -52,5 +90,5 @@ export default buildConfig({
   },
   sharp,
   logger,
-  plugins: [],
+  plugins: [...getStoragePlugins()],
 })
