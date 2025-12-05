@@ -45,8 +45,8 @@ ENV DATABASE_URI=$DATABASE_URI \
     NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1
 
-# Generate Payload types and build
-RUN pnpm generate:types && pnpm build
+# Generate Payload types, import map, and build
+RUN pnpm generate:types && pnpm generate:importmap && pnpm build
 
 # ============================================
 # Stage 3: Production Runner
