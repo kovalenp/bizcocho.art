@@ -1,7 +1,6 @@
 import dotenv from 'dotenv'
 import path from 'path'
 import { fileURLToPath } from 'url'
-import fs from 'fs'
 
 // Load environment variables BEFORE anything else
 const __filename = fileURLToPath(import.meta.url)
@@ -11,10 +10,13 @@ dotenv.config({ path: path.resolve(__dirname, '../.env') })
 // Always drop database before seeding to ensure clean state
 process.env.PAYLOAD_DROP_DATABASE = 'true'
 
+// R2 base URL for media files
+const R2_MEDIA_BASE_URL = process.env.R2_PUBLIC_URL || 'https://assets-test.bizcocho.art'
+
+// Keep R2 enabled so files are uploaded to R2 with correct URLs
+
 async function seed() {
   console.log('🌱 Starting comprehensive database seed...')
-
-  const mediaDir = path.resolve(__dirname, '../media')
 
   // Dynamically import config after env vars are loaded
   const { getPayload } = await import('payload')
@@ -51,194 +53,60 @@ async function seed() {
     }
 
     // ======================
-    // 2. CREATE SAMPLE MEDIA
+    // 2. CREATE MEDIA RECORDS (upload local files)
     // ======================
-    console.log('\n📋 Step 2: Creating sample media...')
+    console.log('\n📋 Step 2: Creating media records...')
 
-    // Media file definitions
+    const fs = await import('fs')
+    const mediaDir = path.resolve(__dirname, '../media')
+
     const mediaFiles = [
-      {
-        filename: 'ceramic-pot.jpg',
-        url: 'https://picsum.photos/800/600?random=1',
-        alt: { en: 'Ceramic pot painting class', es: 'Clase de pintura de cerámica' },
-        title: 'Ceramic Pot Class',
-      },
-      {
-        filename: 'wheel-throwing.jpg',
-        url: 'https://picsum.photos/800/600?random=2',
-        alt: { en: 'Wheel throwing class', es: 'Clase de torno' },
-        title: 'Wheel Throwing Class',
-      },
-      {
-        filename: 'hand-building.jpg',
-        url: 'https://picsum.photos/800/600?random=3',
-        alt: { en: 'Hand building class', es: 'Clase de construcción manual' },
-        title: 'Hand Building Class',
-      },
-      {
-        filename: 'glazing-class.jpg',
-        url: 'https://picsum.photos/800/600?random=4',
-        alt: { en: 'Glazing techniques class', es: 'Clase de técnicas de esmaltado' },
-        title: 'Glazing Class',
-      },
-      {
-        filename: 'gallery-1.jpg',
-        url: 'https://picsum.photos/800/600?random=5',
-        alt: { en: 'Studio gallery 1', es: 'Galería del estudio 1' },
-        title: 'Gallery Image 1',
-      },
-      {
-        filename: 'gallery-2.jpg',
-        url: 'https://picsum.photos/800/600?random=6',
-        alt: { en: 'Studio gallery 2', es: 'Galería del estudio 2' },
-        title: 'Gallery Image 2',
-      },
-      {
-        filename: 'gallery-3.jpg',
-        url: 'https://picsum.photos/800/600?random=7',
-        alt: { en: 'Studio gallery 3', es: 'Galería del estudio 3' },
-        title: 'Gallery Image 3',
-      },
-      {
-        filename: 'instructor-elena.jpg',
-        url: 'https://i.pravatar.cc/300?img=5', // Woman avatar
-        alt: { en: 'Elena Martínez photo', es: 'Foto de Elena Martínez' },
-        title: 'Elena Martínez',
-      },
-      {
-        filename: 'instructor-pablo.jpg',
-        url: 'https://i.pravatar.cc/300?img=12', // Man avatar
-        alt: { en: 'Pablo Sánchez photo', es: 'Foto de Pablo Sánchez' },
-        title: 'Pablo Sánchez',
-      },
+      { filename: 'glazing-class.jpg', alt: { en: 'Ceramic glazing class', es: 'Clase de esmaltado cerámico' } },
+      { filename: 'wheel-throwing.jpg', alt: { en: 'Wheel throwing pottery', es: 'Cerámica en torno' } },
+      { filename: 'ceramic-pot.jpg', alt: { en: 'Handmade ceramic pot', es: 'Maceta de cerámica hecha a mano' } },
+      { filename: 'hand-building.jpg', alt: { en: 'Hand building ceramics', es: 'Cerámica de construcción manual' } },
+      { filename: 'gallery-1.jpg', alt: { en: 'Gallery image 1', es: 'Imagen de galería 1' } },
+      { filename: 'gallery-2.jpg', alt: { en: 'Gallery image 2', es: 'Imagen de galería 2' } },
+      { filename: 'gallery-3.jpg', alt: { en: 'Gallery image 3', es: 'Imagen de galería 3' } },
+      { filename: 'instructor-elena.jpg', alt: { en: 'Instructor Elena', es: 'Instructora Elena' } },
+      { filename: 'instructor-pablo.jpg', alt: { en: 'Instructor Pablo', es: 'Instructor Pablo' } },
     ]
 
-    // Check if media directory has existing images
-    let existingImages: string[] = []
-    if (fs.existsSync(mediaDir)) {
-      existingImages = fs.readdirSync(mediaDir).filter((file) => /\.(jpg|jpeg|png|gif|webp)$/i.test(file))
-    } else {
-      fs.mkdirSync(mediaDir, { recursive: true })
-    }
+    const createdMedia: { id: number; filename: string }[] = []
+    for (const mediaData of mediaFiles) {
+      const filePath = path.join(mediaDir, mediaData.filename)
 
-    const shouldDownloadImages = existingImages.length === 0
-
-    // Helper function to fetch image from URL
-    async function fetchImageFromUrl(url: string): Promise<Buffer> {
-      const response = await fetch(url)
-      if (!response.ok) {
-        throw new Error(`Failed to fetch image from ${url}: ${response.statusText}`)
+      // Check if file exists locally
+      if (!fs.existsSync(filePath)) {
+        console.log(`  ⚠️ Skipping ${mediaData.filename} - file not found`)
+        continue
       }
-      const arrayBuffer = await response.arrayBuffer()
-      return Buffer.from(arrayBuffer)
+
+      const fileBuffer = fs.readFileSync(filePath)
+      const media = await payload.create({
+        collection: 'media',
+        data: {
+          alt: mediaData.alt.en,
+        },
+        file: {
+          data: fileBuffer,
+          name: mediaData.filename,
+          mimetype: 'image/jpeg',
+          size: fileBuffer.length,
+        },
+        locale: 'en',
+      })
+
+      await payload.update({
+        collection: 'media',
+        id: media.id,
+        data: { alt: mediaData.alt.es },
+        locale: 'es',
+      })
+
+      createdMedia.push({ id: media.id, filename: mediaData.filename })
+      console.log(`✅ Created media: ${mediaData.filename}`)
     }
-
-    const createdMedia: any[] = []
-
-    if (shouldDownloadImages) {
-      console.log('📥 Media directory empty, downloading images...')
-
-      for (const { filename, url, alt, title } of mediaFiles) {
-        try {
-          console.log(`  📥 Fetching: ${title}...`)
-          const imageBuffer = await fetchImageFromUrl(url)
-
-          const media = await payload.create({
-            collection: 'media',
-            data: { alt: alt.en },
-            file: {
-              data: imageBuffer,
-              mimetype: 'image/jpeg',
-              name: filename,
-              size: imageBuffer.length,
-            },
-            locale: 'en',
-          })
-
-          await payload.update({
-            collection: 'media',
-            id: media.id,
-            data: { alt: alt.es },
-            locale: 'es',
-          })
-
-          createdMedia.push(media)
-          console.log(`  ✅ Created: ${title}`)
-        } catch (error) {
-          console.error(`  ❌ Failed to create ${title}:`, error)
-        }
-      }
-    } else {
-      console.log(`📁 Found ${existingImages.length} existing images, reusing them...`)
-
-      for (const { filename, alt, title } of mediaFiles) {
-        try {
-          // Find existing file by name pattern (e.g., "ceramic-pot" in "ceramic-pot-abc123.jpg")
-          const baseFilename = filename.replace('.jpg', '')
-          const existingFile = existingImages.find((f) => f.includes(baseFilename))
-
-          if (existingFile) {
-            const filePath = path.join(mediaDir, existingFile)
-            const imageBuffer = fs.readFileSync(filePath)
-
-            const media = await payload.create({
-              collection: 'media',
-              data: { alt: alt.en },
-              file: {
-                data: imageBuffer,
-                mimetype: 'image/jpeg',
-                name: existingFile,
-                size: imageBuffer.length,
-              },
-              locale: 'en',
-            })
-
-            await payload.update({
-              collection: 'media',
-              id: media.id,
-              data: { alt: alt.es },
-              locale: 'es',
-            })
-
-            createdMedia.push(media)
-            console.log(`  ✅ Reused: ${title} (${existingFile})`)
-          } else {
-            // File doesn't exist locally, download it
-            console.log(`  📥 Downloading missing: ${title}...`)
-            const fileConfig = mediaFiles.find((m) => m.filename === filename)
-            if (fileConfig) {
-              const imageBuffer = await fetchImageFromUrl(fileConfig.url)
-
-              const media = await payload.create({
-                collection: 'media',
-                data: { alt: alt.en },
-                file: {
-                  data: imageBuffer,
-                  mimetype: 'image/jpeg',
-                  name: filename,
-                  size: imageBuffer.length,
-                },
-                locale: 'en',
-              })
-
-              await payload.update({
-                collection: 'media',
-                id: media.id,
-                data: { alt: alt.es },
-                locale: 'es',
-              })
-
-              createdMedia.push(media)
-              console.log(`  ✅ Downloaded: ${title}`)
-            }
-          }
-        } catch (error) {
-          console.error(`  ❌ Failed to create ${title}:`, error)
-        }
-      }
-    }
-
-    console.log(`✅ Created ${createdMedia.length} media files`)
 
     // ======================
     // 3. CREATE TAGS
@@ -467,15 +335,15 @@ async function seed() {
     console.log(`  📅 Created 3 sessions for Tiny Treasures`)
 
     // --- CLASS 3: "Wheel Therapy Tuesdays" (type: 'class', recurring schedule) ---
-    console.log('\n  Creating Class 3: Wheel Therapy Tuesdays (recurring schedule)...')
+    console.log('\n  Creating Class 3: Wheel Therapy Tuesdays...')
 
-    // Calculate recurrence dates
+    // Calculate dates for sessions (8 weeks of Tuesdays)
     const tuesdayStart = getNextWeekday(2, 1) // Next Tuesday
     tuesdayStart.setHours(0, 0, 0, 0)
     const tuesdayEnd = new Date(tuesdayStart)
-    tuesdayEnd.setMonth(tuesdayEnd.getMonth() + 3) // 3 months of sessions
+    tuesdayEnd.setDate(tuesdayEnd.getDate() + 56) // 8 weeks
 
-    // Create class first (schedule only works after save)
+    // Create class WITHOUT schedule (to avoid hook triggering during seed)
     const wheelClass = await payload.create({
       collection: 'classes',
       data: {
@@ -497,22 +365,6 @@ async function seed() {
       locale: 'en',
     })
 
-    // Now update with schedule to trigger session generation
-    await payload.update({
-      collection: 'classes',
-      id: wheelClass.id,
-      data: {
-        schedule: {
-          startDate: tuesdayStart.toISOString(),
-          endDate: tuesdayEnd.toISOString(),
-          recurrence: 'weekly',
-          daysOfWeek: ['2'], // Tuesday
-          startTime: '18:30',
-          timezone: 'Europe/Madrid',
-        },
-      },
-    })
-
     await payload.update({
       collection: 'classes',
       id: wheelClass.id,
@@ -524,55 +376,44 @@ async function seed() {
       },
       locale: 'es',
     })
+    console.log(`  ✅ Created: Wheel Therapy Tuesdays`)
 
-    // Check if sessions were auto-generated
-    const wheelSessions = await payload.find({
-      collection: 'sessions',
-      where: { class: { equals: wheelClass.id } },
-      limit: 100,
-    })
-
-    if (wheelSessions.docs.length === 0) {
-      console.log(`  ⚠️  Hook didn't generate sessions, creating manually...`)
-      // Manual fallback: generate sessions ourselves
-      let currentDate = new Date(tuesdayStart)
-      let sessionCount = 0
-      while (currentDate <= tuesdayEnd) {
-        if (currentDate.getDay() === 2) { // Tuesday
-          const sessionStart = new Date(currentDate)
-          sessionStart.setHours(18, 30, 0, 0)
-          await payload.create({
-            collection: 'sessions',
-            data: {
-              sessionType: 'class',
-              class: wheelClass.id,
-              startDateTime: sessionStart.toISOString(),
-              timezone: 'Europe/Madrid',
-              status: 'scheduled',
-              availableSpots: 6,
-            },
-          })
-          sessionCount++
-        }
-        currentDate.setDate(currentDate.getDate() + 1)
+    // Create sessions manually (avoids hook complexity during seed)
+    let currentDate = new Date(tuesdayStart)
+    let wheelSessionCount = 0
+    while (currentDate <= tuesdayEnd) {
+      if (currentDate.getDay() === 2) { // Tuesday
+        const sessionStart = new Date(currentDate)
+        sessionStart.setHours(18, 30, 0, 0)
+        await payload.create({
+          collection: 'sessions',
+          data: {
+            sessionType: 'class',
+            class: wheelClass.id,
+            startDateTime: sessionStart.toISOString(),
+            timezone: 'Europe/Madrid',
+            status: 'scheduled',
+            availableSpots: 6,
+          },
+        })
+        wheelSessionCount++
       }
-      console.log(`  📅 Manually created ${sessionCount} sessions for Wheel Therapy Tuesdays`)
-    } else {
-      console.log(`  ✅ Created: Wheel Therapy Tuesdays (${wheelSessions.docs.length} sessions auto-generated)`)
+      currentDate.setDate(currentDate.getDate() + 1)
     }
+    console.log(`  📅 Created ${wheelSessionCount} sessions for Wheel Therapy Tuesdays`)
 
     // ======================
     // 6. CREATE COURSE (type: 'course' in classes collection)
     // ======================
     console.log('\n📋 Step 6: Creating course...')
 
-    // Calculate course dates (every Monday for a month)
+    // Calculate course dates (4 Mondays)
     const mondayStart = getNextWeekday(1, 1) // Next Monday
     mondayStart.setHours(0, 0, 0, 0)
     const mondayEnd = new Date(mondayStart)
-    mondayEnd.setDate(mondayEnd.getDate() + 28) // 4 weeks (5 Mondays typically)
+    mondayEnd.setDate(mondayEnd.getDate() + 28) // 4 weeks
 
-    // Create course (now in classes collection with type: 'course')
+    // Create course WITHOUT schedule (to avoid hook triggering during seed)
     const potCourse = await payload.create({
       collection: 'classes',
       data: {
@@ -594,22 +435,6 @@ async function seed() {
       locale: 'en',
     })
 
-    // Update with schedule to trigger session generation
-    await payload.update({
-      collection: 'classes',
-      id: potCourse.id,
-      data: {
-        schedule: {
-          startDate: mondayStart.toISOString(),
-          endDate: mondayEnd.toISOString(),
-          recurrence: 'weekly',
-          daysOfWeek: ['1'], // Monday
-          startTime: '17:00',
-          timezone: 'Europe/Madrid',
-        },
-      },
-    })
-
     // Spanish translation
     await payload.update({
       collection: 'classes',
@@ -622,42 +447,31 @@ async function seed() {
       },
       locale: 'es',
     })
+    console.log(`  ✅ Created: Paint Your Own Pot on Mondays`)
 
-    // Check if sessions were auto-generated
-    const courseSessions = await payload.find({
-      collection: 'sessions',
-      where: { class: { equals: potCourse.id } },
-      limit: 100,
-    })
-
-    if (courseSessions.docs.length === 0) {
-      console.log(`  ⚠️  Hook didn't generate sessions, creating manually...`)
-      // Manual fallback: generate course sessions ourselves
-      let currentDate = new Date(mondayStart)
-      let sessionCount = 0
-      while (currentDate <= mondayEnd) {
-        if (currentDate.getDay() === 1) { // Monday
-          const sessionStart = new Date(currentDate)
-          sessionStart.setHours(17, 0, 0, 0)
-          await payload.create({
-            collection: 'sessions',
-            data: {
-              sessionType: 'course',
-              class: potCourse.id,
-              startDateTime: sessionStart.toISOString(),
-              timezone: 'Europe/Madrid',
-              status: 'scheduled',
-              availableSpots: 8,
-            },
-          })
-          sessionCount++
-        }
-        currentDate.setDate(currentDate.getDate() + 1)
+    // Create course sessions manually (avoids hook complexity during seed)
+    let courseDate = new Date(mondayStart)
+    let courseSessionCount = 0
+    while (courseDate <= mondayEnd) {
+      if (courseDate.getDay() === 1) { // Monday
+        const sessionStart = new Date(courseDate)
+        sessionStart.setHours(17, 0, 0, 0)
+        await payload.create({
+          collection: 'sessions',
+          data: {
+            sessionType: 'course',
+            class: potCourse.id,
+            startDateTime: sessionStart.toISOString(),
+            timezone: 'Europe/Madrid',
+            status: 'scheduled',
+            availableSpots: 8,
+          },
+        })
+        courseSessionCount++
       }
-      console.log(`  📅 Manually created ${sessionCount} sessions for Paint Your Own Pot`)
-    } else {
-      console.log(`  ✅ Created: Paint Your Own Pot on Mondays (${courseSessions.docs.length} sessions auto-generated)`)
+      courseDate.setDate(courseDate.getDate() + 1)
     }
+    console.log(`  📅 Created ${courseSessionCount} sessions for Paint Your Own Pot`)
 
     // ======================
     // SUMMARY

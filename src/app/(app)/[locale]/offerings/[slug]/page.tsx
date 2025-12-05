@@ -56,7 +56,9 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       : `Join our ${title} class at bizcocho.art. ${classDoc.durationMinutes} minutes of creative learning.`)
 
   const imageUrl = featuredImage?.url
-    ? `https://bizcocho.art${featuredImage.url}`
+    ? featuredImage.url.startsWith('http')
+      ? featuredImage.url
+      : `https://bizcocho.art${featuredImage.url}`
     : 'https://bizcocho.art/logo.png'
 
   const keywords = [

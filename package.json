@@ -20,6 +20,7 @@
     "format:check": "prettier --check .",
     "payload": "cross-env NODE_OPTIONS=--no-deprecation payload",
     "seed": "cross-env NODE_OPTIONS=--no-deprecation tsx scripts/seed-classes.ts",
+    "seed:admin": "cross-env NODE_OPTIONS=--no-deprecation tsx scripts/seed-admin.ts",
     "start": "cross-env NODE_OPTIONS=--no-deprecation next start -p 4321",
     "test": "cross-env NODE_OPTIONS=--no-deprecation vitest run",
     "test:watch": "cross-env NODE_OPTIONS=--no-deprecation vitest watch",
