@@ -72,8 +72,10 @@ COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/scripts/start.sh ./start.sh
 
-# Make start script executable
-RUN chmod +x ./start.sh
+# Make start script executable and create cache directory with correct permissions
+RUN chmod +x ./start.sh && \
+    mkdir -p .next/cache && \
+    chown -R nextjs:nodejs .next
 
 # Set correct permissions
 USER nextjs
