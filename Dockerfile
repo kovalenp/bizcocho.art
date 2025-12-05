@@ -38,6 +38,9 @@ ARG STRIPE_SECRET_KEY
 ARG STRIPE_PUBLISHABLE_KEY
 ARG R2_BUCKET
 ARG R2_ACCOUNT_ID
+ARG R2_ACCESS_KEY_ID
+ARG R2_SECRET_ACCESS_KEY
+ARG R2_PUBLIC_URL
 
 ENV DATABASE_URI=$DATABASE_URI \
     PAYLOAD_SECRET=$PAYLOAD_SECRET \
@@ -46,6 +49,9 @@ ENV DATABASE_URI=$DATABASE_URI \
     STRIPE_PUBLISHABLE_KEY=$STRIPE_PUBLISHABLE_KEY \
     R2_BUCKET=$R2_BUCKET \
     R2_ACCOUNT_ID=$R2_ACCOUNT_ID \
+    R2_ACCESS_KEY_ID=$R2_ACCESS_KEY_ID \
+    R2_SECRET_ACCESS_KEY=$R2_SECRET_ACCESS_KEY \
+    R2_PUBLIC_URL=$R2_PUBLIC_URL \
     NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1
 
@@ -70,6 +76,7 @@ RUN addgroup --system --gid 1001 nodejs && \
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
+COPY --from=builder /app/src/app/(payload)/admin/importMap.js ./src/app/(payload)/admin/importMap.js
 COPY --from=builder /app/scripts/start.sh ./start.sh
 
 # Make start script executable and create cache directory with correct permissions
